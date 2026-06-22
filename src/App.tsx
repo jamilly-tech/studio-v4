@@ -28,10 +28,10 @@ import {
   Volume2, VolumeX, Music2, ImageIcon, Type, Scissors,
   Wand2, Captions, SlidersHorizontal, Cloud, Layers,
   Smartphone, Monitor, Square, RectangleHorizontal, Circle,
-  Move, Crop, Eraser, PenTool, ChevronDown, SplitSquareVertical,
+  Move, Crop, Eraser, PenTool, ChevronDown, SplitSquareVertical, Stamp,
 } from "lucide-react";
 
-type PreviewToolId = "move" | "crop" | "chroma" | "mask-rect" | "mask-circle" | "mask-pen" | null;
+type PreviewToolId = "move" | "crop" | "chroma" | "mask-rect" | "mask-circle" | "mask-pen" | "remove-wm" | null;
 
 const FORMAT_ICONS: Record<string, React.ReactNode> = {
   reels: <Smartphone className="size-3.5" />,
@@ -76,6 +76,8 @@ export function App() {
   const [splitScreen, setSplitScreen] = useState(false);
   const [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scale: 100 });
   const [captionY, setCaptionY] = useState(18);
+  const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [wmRemoving, setWmRemoving] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -474,6 +476,10 @@ export function App() {
                     <button type="button" onClick={() => setSplitScreen(!splitScreen)} className={`grid size-7 place-items-center rounded-md transition ${splitScreen ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Tela dividida">
                       <SplitSquareVertical className="size-3.5" />
                     </button>
+                    <div className="h-5 w-px bg-white/15" />
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "remove-wm" ? null : "remove-wm")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "remove-wm" ? "bg-amber-500 text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Remover marca d'agua">
+                      <Stamp className="size-3.5" />
+                    </button>
                   </div>
 
                   <span className="text-[9px] text-foreground/50 font-mono">{activeFormat.size}</span>
@@ -602,6 +608,70 @@ export function App() {
                       <div className="absolute inset-0 cursor-crosshair">
                         <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded bg-black/70 px-2 py-0.5">
                           <span className="text-[9px] text-white/70">Clique ponto a ponto para desenhar mascara</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Remove watermark — selecionar regiao */}
+                    {previewTool === "remove-wm" && (
+                      <div
+                        className="absolute inset-0 cursor-crosshair"
+                        onPointerDown={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const startX = ((e.clientX - rect.left) / rect.width) * 100;
+                          const startY = ((e.clientY - rect.top) / rect.height) * 100;
+                          const move = (ev: PointerEvent) => {
+                            const cx = ((ev.clientX - rect.left) / rect.width) * 100;
+                            const cy = ((ev.clientY - rect.top) / rect.height) * 100;
+                            setWmRegion({
+                              x: Math.min(startX, cx),
+                              y: Math.min(startY, cy),
+                              w: Math.abs(cx - startX),
+                              h: Math.abs(cy - startY),
+                            });
+                          };
+                          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+                          window.addEventListener("pointermove", move);
+                          window.addEventListener("pointerup", up);
+                        }}
+                      >
+                        {wmRegion && (
+                          <div
+                            className="absolute border-2 border-dashed border-amber-400 bg-amber-400/10"
+                            style={{ left: `${wmRegion.x}%`, top: `${wmRegion.y}%`, width: `${wmRegion.w}%`, height: `${wmRegion.h}%` }}
+                          />
+                        )}
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded-lg bg-black/80 px-3 py-1.5 flex items-center gap-2">
+                          {wmRegion && wmRegion.w > 1 ? (
+                            <>
+                              <span className="text-[9px] text-amber-300">Regiao selecionada</span>
+                              <button
+                                type="button"
+                                disabled={wmRemoving}
+                                onClick={async () => {
+                                  if (!previewAsset?.filePath || !wmRegion) return;
+                                  setWmRemoving(true);
+                                  try {
+                                    const result = await window.studioV4?.media?.removeWatermark(previewAsset.filePath, wmRegion);
+                                    if (result?.proxyUrl) {
+                                      updateAsset(previewAsset.id, { previewUrl: result.proxyUrl, url: result.proxyUrl });
+                                    }
+                                  } catch (err) {
+                                    console.error(err);
+                                  } finally {
+                                    setWmRemoving(false);
+                                    setWmRegion(null);
+                                    setPreviewTool(null);
+                                  }
+                                }}
+                                className="rounded bg-amber-500 px-2 py-0.5 text-[9px] font-bold text-black hover:bg-amber-400 disabled:opacity-50"
+                              >
+                                {wmRemoving ? "Removendo..." : "Remover marca"}
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[9px] text-white/60">Desenhe um retangulo sobre a marca d'agua</span>
+                          )}
                         </div>
                       </div>
                     )}

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("studioV4", {
     extractWav: (filePath) => ipcRenderer.invoke("media:extract-wav", filePath),
     thumbnailStrip: (filePath, opts) => ipcRenderer.invoke("media:thumbnail-strip", filePath, opts),
     transcribe: (filePath, language) => ipcRenderer.invoke("media:transcribe", filePath, language),
+    removeWatermark: (filePath, region) => ipcRenderer.invoke("media:remove-watermark", filePath, region),
     onProgress: (cb) => {
       const handler = (_event, data) => cb(data);
       ipcRenderer.on("media:progress", handler);

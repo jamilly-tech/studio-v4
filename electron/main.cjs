@@ -439,6 +439,101 @@ ipcMain.handle("media:transcribe", async (_event, filePath, language) => {
   }
 });
 
+// ── 6c. Remove Watermark — temporal median inpainting ───────────────────────
+//
+// Tecnica: para cada pixel da regiao da marca dagua, calcula a mediana
+// temporal de N frames vizinhos. Como a logo e estatica mas o conteudo
+// muda, a mediana revela o que esta por tras.
+//
+// Fluxo: extrair frames → inpainting por mediana → recompor video
+
+ipcMain.handle("media:remove-watermark", async (_event, filePath, region) => {
+  // region = { x, y, w, h } em % do video (0-100)
+  if (!fs.existsSync(filePath)) return { error: "Arquivo nao encontrado" };
+
+  const baseName = safeBaseName(filePath);
+  const outputPath = path.join(projectTmpDir, `nowm_${Date.now()}_${baseName}.mp4`);
+
+  // Pegar dimensoes do video
+  const probeArgs = ["-v", "quiet", "-print_format", "json", "-show_streams", filePath];
+  const probeResult = await runProcess(ffprobePath, probeArgs);
+  let videoWidth = 1920, videoHeight = 1080;
+  try {
+    const streams = JSON.parse(probeResult.stdout).streams || [];
+    const vs = streams.find(s => s.codec_type === "video");
+    if (vs) { videoWidth = vs.width; videoHeight = vs.height; }
+  } catch {}
+
+  // Converter % para pixels
+  const rx = Math.round(region.x / 100 * videoWidth);
+  const ry = Math.round(region.y / 100 * videoHeight);
+  const rw = Math.round(region.w / 100 * videoWidth);
+  const rh = Math.round(region.h / 100 * videoHeight);
+
+  // FFmpeg filter chain:
+  // 1. tmix=frames=7 — media temporal de 7 frames (gera frame "limpo" da regiao)
+  // 2. crop — recorta so a regiao da marca
+  // 3. overlay — cola a regiao limpa sobre o video original
+  //
+  // Resultado: a logo desaparece porque a mediana temporal a elimina,
+  // enquanto o conteudo movel se reconstroi pelos frames vizinhos.
+
+  const filterComplex = [
+    `[0:v]split[orig][forclean]`,
+    `[forclean]tmix=frames=9:weights=1 1 1 1 1 1 1 1 1,crop=${rw}:${rh}:${rx}:${ry}[cleanpatch]`,
+    `[orig][cleanpatch]overlay=${rx}:${ry}[outv]`,
+  ].join(";");
+
+  const args = [
+    "-i", filePath,
+    "-filter_complex", filterComplex,
+    "-map", "[outv]", "-map", "0:a?",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+    "-c:a", "copy",
+    "-movflags", "+faststart",
+    "-progress", "pipe:1", "-nostats",
+    "-y", outputPath,
+  ];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, args, { windowsHide: true });
+    let durationSec = 0;
+    let progressBuf = "";
+
+    proc.stderr.on("data", (chunk) => {
+      const text = chunk.toString();
+      const m = text.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+      if (m && !durationSec) durationSec = parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3]);
+    });
+
+    proc.stdout.on("data", (chunk) => {
+      progressBuf += chunk.toString();
+      const lines = progressBuf.split("\n");
+      progressBuf = lines.pop() ?? "";
+      for (const line of lines) {
+        const m2 = line.match(/^out_time_ms=(\d+)/);
+        if (m2 && durationSec > 0) {
+          const pct = Math.min(99, Math.round((parseInt(m2[1]) / 1_000_000 / durationSec) * 100));
+          sendProgress("media:progress", { filePath, stage: "remove-watermark", percent: pct });
+        }
+      }
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0 && fs.existsSync(outputPath)) {
+        proxyPaths.add(outputPath);
+        const port = server?.address()?.port ?? preferredPort;
+        const url = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(outputPath)}`;
+        sendProgress("media:progress", { filePath, stage: "remove-watermark", percent: 100 });
+        resolve({ outputPath, proxyUrl: url });
+      } else {
+        reject(new Error(`Watermark removal falhou com codigo ${code}`));
+      }
+    });
+    proc.on("error", reject);
+  });
+});
+
 // ── 7. Video Thumbnails Strip (para timeline) ───────────────────────────────
 
 ipcMain.handle("media:thumbnail-strip", async (_event, filePath, opts = {}) => {

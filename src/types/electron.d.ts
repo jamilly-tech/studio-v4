@@ -73,6 +73,7 @@ declare global {
         extractWav: (filePath: string) => Promise<{ path?: string; error?: string }>;
         thumbnailStrip: (filePath: string, opts?: { count?: number; width?: number; height?: number }) => Promise<{ thumbnails: string[]; duration: number }>;
         transcribe: (filePath: string, language?: string) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
+        removeWatermark: (filePath: string, region: { x: number; y: number; w: number; h: number }) => Promise<{ outputPath: string; proxyUrl: string }>;
         onProgress: (cb: (data: MediaProgressEvent) => void) => () => void;
       };
 
