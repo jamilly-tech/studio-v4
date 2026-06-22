@@ -24,8 +24,8 @@ export function HomeScreen({
   onOpenProject: (name: string, filePath?: string) => void;
 }) {
   return (
-    <section className="relative min-h-0 flex-1 overflow-y-auto bg-[#0f0f10] p-5 text-white">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,#0f0f10,#18191b_50%,#111)]" />
+    <section className="relative min-h-0 flex-1 overflow-y-auto bg-background p-5 text-foreground">
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background)),hsl(var(--card))_50%,hsl(var(--background)))]" />
       <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(#fff_1px,transparent_1px),linear-gradient(90deg,#fff_1px,transparent_1px)] [background-size:44px_44px]" />
 
       <div className="home-reveal relative z-10 mx-auto grid w-full max-w-7xl gap-5">
