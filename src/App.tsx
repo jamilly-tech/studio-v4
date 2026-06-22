@@ -229,7 +229,10 @@ export function App() {
     setDropHighlight(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      const paths = files.map((f) => (f as any).path).filter(Boolean);
+      const paths = files.map((f) => {
+        if (window.studioV4?.getPathForFile) return window.studioV4.getPathForFile(f);
+        return (f as any).path || null;
+      }).filter(Boolean) as string[];
       if (paths.length > 0) ingestFiles(paths);
     }
   }, [ingestFiles]);

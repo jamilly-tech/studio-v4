@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("studioV4", {
   isElectron: true,
@@ -37,6 +37,11 @@ contextBridge.exposeInMainWorld("studioV4", {
   showSaveDialog: (opts) => ipcRenderer.invoke("show-save-dialog", opts),
   saveProjectFile: (payload) => ipcRenderer.invoke("save-project-file", payload),
   openProjectFile: () => ipcRenderer.invoke("open-project-file"),
+
+  // ── File Path from Drop ────────────────────────────────────────────────
+  getPathForFile: (file) => {
+    try { return webUtils.getPathForFile(file); } catch { return null; }
+  },
 
   // ── Export ────────────────────────────────────────────────────────────────
   exportVideo: (payload) => ipcRenderer.invoke("export-video", payload),

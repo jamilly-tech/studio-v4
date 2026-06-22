@@ -85,6 +85,7 @@ declare global {
       readConfig: () => Promise<Record<string, unknown>>;
       writeConfig: (data: Record<string, unknown>) => Promise<boolean>;
 
+      getPathForFile: (file: File) => string | null;
       openFileDialog: () => Promise<string[] | null>;
       showSaveDialog: (opts: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
       saveProjectFile: (payload: { snapshot: unknown; defaultName: string }) => Promise<string | null>;

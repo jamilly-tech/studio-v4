@@ -1128,6 +1128,10 @@ async function createWindow() {
   mainWindow.once("ready-to-show", () => { mainWindow.show(); mainWindow.focus(); });
   mainWindow.webContents.setWindowOpenHandler(({ url: u }) => { shell.openExternal(u); return { action: "deny" }; });
   mainWindow.webContents.on("render-process-gone", (_e, d) => { if (d.reason !== "clean-exit") mainWindow.reload(); });
+
+  // Permitir drag & drop sem navegar
+  mainWindow.webContents.on("will-navigate", (e) => { e.preventDefault(); });
+
   await mainWindow.loadURL(url);
 
   // Checar atualizações após carregar
