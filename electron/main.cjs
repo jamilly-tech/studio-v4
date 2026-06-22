@@ -1,13 +1,22 @@
-// Carrega .env antes de tudo
+// Carrega .env de multiplos locais possiveis
 (function loadEnv() {
-  const envPath = require("node:path").join(__dirname, "..", ".env");
-  try {
-    const lines = require("node:fs").readFileSync(envPath, "utf-8").split("\n");
-    for (const line of lines) {
-      const match = line.match(/^([^#=]+)=(.*)$/);
-      if (match) process.env[match[1].trim()] = match[2].trim();
-    }
-  } catch {}
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const candidates = [
+    path.join(__dirname, "..", ".env"),
+    path.join(__dirname, ".env"),
+    path.join(process.resourcesPath || "", ".env"),
+  ];
+  for (const envPath of candidates) {
+    try {
+      const lines = fs.readFileSync(envPath, "utf-8").split("\n");
+      for (const line of lines) {
+        const match = line.match(/^([^#=]+)=(.*)$/);
+        if (match && !process.env[match[1].trim()]) process.env[match[1].trim()] = match[2].trim();
+      }
+      break;
+    } catch {}
+  }
 })();
 
 const { app, BrowserWindow, shell, ipcMain, screen, dialog } = require("electron");
@@ -35,9 +44,15 @@ const ffmpegPath = app.isPackaged
   ? path.join(process.resourcesPath, "ffmpeg.exe")
   : require("ffmpeg-static");
 
-const ffprobePath = app.isPackaged
-  ? path.join(process.resourcesPath, "ffprobe.exe")
-  : path.join(path.dirname(require.resolve("ffmpeg-static")), "ffprobe.exe");
+// ffprobe: tenta resourcesPath, senao usa ffmpeg com flag -show_format
+const ffprobePath = (() => {
+  const candidates = [
+    app.isPackaged ? path.join(process.resourcesPath, "ffprobe.exe") : null,
+    path.join(path.dirname(ffmpegPath || ""), "ffprobe.exe"),
+  ].filter(Boolean);
+  for (const p of candidates) { try { if (fs.existsSync(p)) return p; } catch {} }
+  return "ffprobe";
+})();
 
 let server;
 let mainWindow;

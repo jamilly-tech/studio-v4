@@ -58,8 +58,8 @@
         "to": "ffmpeg.exe"
       },
       {
-        "from": "node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe",
-        "to": "ffprobe.exe"
+        "from": ".env",
+        "to": ".env"
       }
     ],
     "win": {

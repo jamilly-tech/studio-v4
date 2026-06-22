@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Studio V4 — Editor de Video Profissional</title>
-  <meta name="description" content="Editor de video desktop gratuito com corte limpo inteligente, transcricao automatica e Google Drive. Aceita qualquer formato.">
+  <title>Studio V4 — Editor de Vídeo Profissional</title>
+  <meta name="description" content="Editor de vídeo desktop gratuito com corte limpo inteligente, transcrição automática e Google Drive. Aceita qualquer formato.">
   <link rel="canonical" href="https://studiov4.pages.dev">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
@@ -89,6 +89,16 @@
       border: 1px solid rgba(255,255,255,0.12);
     }
     .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .app-preview {
+      max-width: 900px;
+      width: 100%;
+      margin: 3rem auto 0;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 40px 120px rgba(0,0,0,0.6);
+    }
+    .app-preview img { width: 100%; display: block; }
     .features {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -131,6 +141,12 @@
       font-weight: 700;
       color: rgba(255,255,255,0.5);
     }
+    .cta-bottom {
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+    .cta-bottom h2 { font-size: 2rem; font-weight: 900; margin-bottom: 1rem; }
+    .cta-bottom p { color: rgba(255,255,255,0.4); margin-bottom: 2rem; }
     footer {
       text-align: center;
       padding: 2rem;
@@ -146,52 +162,55 @@
 </head>
 <body>
   <section class="hero">
-    <div class="badge">Gratuito para Windows</div>
-    <h1>Edite video como <span>profissional</span></h1>
+    <div class="badge">✦ Gratuito para Windows</div>
+    <h1>Edite vídeo como <span>profissional</span></h1>
     <p class="subtitle">
-      Corte limpo inteligente que preserva sua fala. Transcricao automatica em portugues.
+      Corte limpo inteligente que preserva sua fala. Transcrição automática em português.
       Aceita qualquer formato. Salva no Google Drive.
     </p>
     <div class="buttons">
-      <a href="https://github.com/v4company/studio-v4/releases/latest/download/Studio.V4.Setup.1.0.0.exe" class="btn btn-primary">
-        Baixar Studio V4
+      <a href="https://github.com/jamilly-tech/studio-v4/releases/latest" class="btn btn-primary">
+        ⬇ Baixar Studio V4
       </a>
-      <a href="https://github.com/v4company/studio-v4/releases" class="btn btn-secondary">
-        Ver todas as versoes
+      <a href="https://github.com/jamilly-tech/studio-v4" class="btn btn-secondary">
+        Código no GitHub
       </a>
+    </div>
+    <div class="app-preview">
+      <img src="https://raw.githubusercontent.com/jamilly-tech/studio-v4/master/assets/screenshot.png" alt="Studio V4 Editor" onerror="this.parentElement.style.display='none'">
     </div>
   </section>
 
   <div class="features">
     <div class="feature">
-      <div class="feature-icon" style="background: rgba(229,9,20,0.15); color: #e50914;">&#9988;</div>
+      <div class="feature-icon" style="background: rgba(229,9,20,0.15); color: #e50914;">✂</div>
       <h3>Corte Limpo</h3>
-      <p>Detecta silencio real sem cortar micro-falas, silabas curtas e respiracoes. Diferente do corte bruto do CapCut.</p>
+      <p>Detecta silêncio real sem cortar micro-falas, sílabas curtas e respirações. Diferente do corte bruto do CapCut.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon" style="background: rgba(82,204,90,0.15); color: #52cc5a;">&#9998;</div>
-      <h3>Transcricao PT-BR</h3>
-      <p>Transcreve audio com acentuacao, virgulas e pontuacao correta. Tambem entende ingles e espanhol.</p>
+      <div class="feature-icon" style="background: rgba(82,204,90,0.15); color: #52cc5a;">✍</div>
+      <h3>Transcrição PT-BR</h3>
+      <p>Transcreve áudio com acentuação, vírgulas e pontuação correta. Também entende inglês e espanhol.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon" style="background: rgba(66,133,244,0.15); color: #4285f4;">&#9729;</div>
+      <div class="feature-icon" style="background: rgba(66,133,244,0.15); color: #4285f4;">☁</div>
       <h3>Google Drive</h3>
-      <p>Salve e abra projetos no Drive. Acesse de qualquer computador apos login.</p>
+      <p>Salve e abra projetos no Drive. Acesse de qualquer computador após login.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon" style="background: rgba(255,193,7,0.15); color: #ffc107;">&#128193;</div>
+      <div class="feature-icon" style="background: rgba(255,193,7,0.15); color: #ffc107;">📁</div>
       <h3>Aceita Tudo</h3>
       <p>Jogue qualquer arquivo: MP4, MOV, MKV, OGG do WhatsApp, WAV, PNG. Converte automaticamente.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon" style="background: rgba(156,39,176,0.15); color: #9c27b0;">&#127912;</div>
+      <div class="feature-icon" style="background: rgba(156,39,176,0.15); color: #9c27b0;">🎨</div>
       <h3>Presets Multi-Programa</h3>
       <p>Importe LUTs e presets de Adobe, DaVinci, CapCut e Sony Vegas. Organize em pastas.</p>
     </div>
     <div class="feature">
-      <div class="feature-icon" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6);">&#8734;</div>
+      <div class="feature-icon" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6);">∞</div>
       <h3>Timeline Infinita</h3>
-      <p>Tracks ilimitadas com overlay. Crie multiplas timelines independentes. Zoom e scroll sem limite.</p>
+      <p>Tracks ilimitadas com overlay. Crie múltiplas timelines independentes. Zoom e scroll sem limite.</p>
     </div>
   </div>
 
@@ -222,8 +241,16 @@
     </div>
   </section>
 
+  <section class="cta-bottom">
+    <h2>Comece agora</h2>
+    <p>Sem cadastro, sem marca d'água, sem limite de exportação.</p>
+    <a href="https://github.com/jamilly-tech/studio-v4/releases/latest" class="btn btn-primary">
+      ⬇ Baixar Studio V4
+    </a>
+  </section>
+
   <footer>
-    <a href="https://studiov4.pages.dev" style="color:rgba(255,255,255,0.3);text-decoration:none">studiov4.pages.dev</a> &mdash; V4 Company &mdash; Gratuito e sem marca d'agua
+    <a href="https://studiov4.pages.dev" style="color:rgba(255,255,255,0.3);text-decoration:none">studiov4.pages.dev</a> — V4 Company — Gratuito e sem marca d'água
   </footer>
 </body>
 </html>
