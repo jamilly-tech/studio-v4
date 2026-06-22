@@ -44,7 +44,7 @@ export function TopBar({
   }
 
   return (
-    <header className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-background px-3">
+    <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-card px-3">
       <div className="flex items-center gap-3">
         <img
           src={theme === "dark" ? logoWhite : logoRed}
@@ -55,11 +55,11 @@ export function TopBar({
           <button
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-bold hover:bg-muted transition"
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/8 px-2.5 py-1.5 text-xs font-bold text-foreground hover:bg-white/12 transition"
           >
             <Menu className="size-4" />
             Menu
-            <ChevronDown className="size-3 text-muted-foreground" />
+            <ChevronDown className="size-3 opacity-50" />
           </button>
           {menuOpen && (
             <div className="absolute left-0 top-8 z-50 grid w-[560px] grid-cols-4 overflow-hidden rounded-md border border-border bg-background text-xs shadow-2xl">
@@ -122,7 +122,7 @@ export function TopBar({
           <button
             type="button"
             onClick={() => setIsEditingName(true)}
-            className="max-w-[200px] truncate rounded-md border border-border bg-card px-3 py-1 text-xs font-bold hover:border-primary/40 transition"
+            className="max-w-[200px] truncate rounded-md border border-white/15 bg-white/8 px-3 py-1.5 text-xs font-bold text-foreground hover:border-primary/40 hover:bg-white/12 transition"
             title="Clique para renomear"
           >
             {projectName}

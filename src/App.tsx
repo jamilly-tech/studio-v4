@@ -415,7 +415,7 @@ export function App() {
 
               {/* ── Preview ── */}
               <section className="flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center justify-between border-b border-border px-2 py-1">
+                <div className="flex items-center justify-between border-b border-border bg-card px-2 py-1">
                   {/* Preview tools: formato, mask, split */}
                   <div className="flex items-center gap-1">
                     {/* Format dropdown */}
@@ -423,7 +423,7 @@ export function App() {
                       <button
                         type="button"
                         onClick={() => setFormatOpen(!formatOpen)}
-                        className="flex items-center gap-1 rounded-md border border-border px-1.5 py-1 hover:bg-card transition"
+                        className="flex items-center gap-1 rounded-md border border-white/15 bg-white/8 px-1.5 py-1 hover:bg-white/12 transition"
                         title={`${activeFormat.label} ${activeFormat.size}`}
                       >
                         {FORMAT_ICONS[activeFormat.id] || <Smartphone className="size-3.5" />}
@@ -448,35 +448,35 @@ export function App() {
                         </div>
                       )}
                     </div>
-                    <div className="h-5 w-px bg-border" />
+                    <div className="h-5 w-px bg-white/15" />
                     {/* Preview tools */}
-                    <button type="button" onClick={() => setPreviewTool(previewTool === "move" ? null : "move")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "move" ? "bg-primary text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Mover/Redimensionar">
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "move" ? null : "move")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "move" ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Mover/Redimensionar">
                       <Move className="size-3.5" />
                     </button>
-                    <button type="button" onClick={() => setPreviewTool(previewTool === "crop" ? null : "crop")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "crop" ? "bg-primary text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Cortar">
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "crop" ? null : "crop")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "crop" ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Cortar">
                       <Crop className="size-3.5" />
                     </button>
-                    <div className="h-5 w-px bg-border" />
+                    <div className="h-5 w-px bg-white/15" />
                     {/* Mask tools */}
-                    <button type="button" onClick={() => setPreviewTool(previewTool === "chroma" ? null : "chroma")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "chroma" ? "bg-green-500 text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Chroma Key">
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "chroma" ? null : "chroma")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "chroma" ? "bg-green-500 text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Chroma Key">
                       <Eraser className="size-3.5" />
                     </button>
-                    <button type="button" onClick={() => setPreviewTool(previewTool === "mask-rect" ? null : "mask-rect")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "mask-rect" ? "bg-primary text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Mascara retangular">
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "mask-rect" ? null : "mask-rect")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "mask-rect" ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Mascara retangular">
                       <RectangleHorizontal className="size-3.5" />
                     </button>
-                    <button type="button" onClick={() => setPreviewTool(previewTool === "mask-circle" ? null : "mask-circle")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "mask-circle" ? "bg-primary text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Mascara circular">
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "mask-circle" ? null : "mask-circle")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "mask-circle" ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Mascara circular">
                       <Circle className="size-3.5" />
                     </button>
-                    <button type="button" onClick={() => setPreviewTool(previewTool === "mask-pen" ? null : "mask-pen")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "mask-pen" ? "bg-primary text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Mascara livre (pen)">
+                    <button type="button" onClick={() => setPreviewTool(previewTool === "mask-pen" ? null : "mask-pen")} className={`grid size-7 place-items-center rounded-md transition ${previewTool === "mask-pen" ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Mascara livre (pen)">
                       <PenTool className="size-3.5" />
                     </button>
-                    <div className="h-5 w-px bg-border" />
-                    <button type="button" onClick={() => setSplitScreen(!splitScreen)} className={`grid size-7 place-items-center rounded-md transition ${splitScreen ? "bg-primary text-white" : "text-muted-foreground hover:bg-card hover:text-foreground"}`} title="Tela dividida">
+                    <div className="h-5 w-px bg-white/15" />
+                    <button type="button" onClick={() => setSplitScreen(!splitScreen)} className={`grid size-7 place-items-center rounded-md transition ${splitScreen ? "bg-primary text-white" : "text-foreground/70 hover:bg-white/10 hover:text-foreground"}`} title="Tela dividida">
                       <SplitSquareVertical className="size-3.5" />
                     </button>
                   </div>
 
-                  <span className="text-[9px] text-muted-foreground font-mono">{activeFormat.size}</span>
+                  <span className="text-[9px] text-foreground/50 font-mono">{activeFormat.size}</span>
                 </div>
 
                 {/* Preview area */}
