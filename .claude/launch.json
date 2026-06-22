@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "studio-v4-dev",
+      "runtimeExecutable": "C:\\Users\\Usuario\\Downloads\\StudioV4\\node_modules\\.bin\\vite",
+      "runtimeArgs": ["--host", "127.0.0.1", "--port", "5173"],
+      "port": 5173,
+      "cwd": "C:\\Users\\Usuario\\Downloads\\StudioV4"
+    }
+  ]
+}

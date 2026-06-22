@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="80" viewBox="0 0 320 80" role="img" aria-label="Studio V4">
+  <rect width="320" height="80" rx="10" fill="#ffffff"/>
+  <path d="M34 18h18l16 44H50l-4-12H30l-4 12H10l16-44h8Zm1 14-5 15h11l-5-15h-1Z" fill="#e50914"/>
+  <path d="M74 18h17l13 28 13-28h17l-22 44H96L74 18Z" fill="#111111"/>
+  <path d="M160 18h20v27h8v13h-8v9h-16v-9h-36V45l32-27Zm4 14-16 13h16V32Z" fill="#e50914"/>
+  <text x="204" y="35" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="22" fill="#111111">STUDIO</text>
+  <text x="204" y="58" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="16" fill="#e50914">VIDEO AI</text>
+</svg>

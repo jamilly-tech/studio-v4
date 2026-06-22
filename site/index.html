@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Studio V4 — Editor de Video Profissional</title>
+  <meta name="description" content="Editor de video desktop gratuito com corte limpo inteligente, transcricao automatica e Google Drive. Aceita qualquer formato.">
+  <link rel="canonical" href="https://studiov4.pages.dev">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: #080808;
+      color: #f5f5f5;
+      min-height: 100vh;
+    }
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      background: linear-gradient(180deg, #080808 0%, #111 50%, #0a0a0a 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 30%, rgba(229, 9, 20, 0.08) 0%, transparent 70%);
+    }
+    .hero > * { position: relative; z-index: 1; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      border-radius: 999px;
+      border: 1px solid rgba(229, 9, 20, 0.3);
+      background: rgba(229, 9, 20, 0.08);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #e50914;
+      margin-bottom: 1.5rem;
+    }
+    h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 900;
+      line-height: 1.1;
+      max-width: 800px;
+      margin-bottom: 1.5rem;
+    }
+    h1 span { color: #e50914; }
+    .subtitle {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: rgba(255,255,255,0.5);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 2.5rem;
+    }
+    .buttons { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.9rem 2rem;
+      border-radius: 0.75rem;
+      font-weight: 900;
+      font-size: 1rem;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary {
+      background: #e50914;
+      color: white;
+      box-shadow: 0 0 0 1px rgba(229, 9, 20, 0.4), 0 20px 60px rgba(229, 9, 20, 0.2);
+    }
+    .btn-primary:hover { background: #cc0812; transform: translateY(-2px); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      max-width: 1000px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+    }
+    .feature {
+      padding: 1.5rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(255,255,255,0.06);
+      background: rgba(255,255,255,0.02);
+    }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 0.75rem;
+      display: grid;
+      place-items: center;
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    .feature h3 { font-size: 1rem; font-weight: 900; margin-bottom: 0.5rem; }
+    .feature p { font-size: 0.85rem; color: rgba(255,255,255,0.45); line-height: 1.5; }
+    .formats {
+      text-align: center;
+      padding: 3rem 2rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .formats h2 { font-size: 1.5rem; font-weight: 900; margin-bottom: 0.5rem; }
+    .formats p { color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .format-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; max-width: 700px; margin: 0 auto; }
+    .format-tag {
+      padding: 0.3rem 0.8rem;
+      border-radius: 0.5rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.5);
+    }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.25);
+    }
+    @media (max-width: 640px) {
+      .buttons { flex-direction: column; align-items: center; }
+      .btn { width: 100%; max-width: 300px; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <div class="badge">Gratuito para Windows</div>
+    <h1>Edite video como <span>profissional</span></h1>
+    <p class="subtitle">
+      Corte limpo inteligente que preserva sua fala. Transcricao automatica em portugues.
+      Aceita qualquer formato. Salva no Google Drive.
+    </p>
+    <div class="buttons">
+      <a href="https://github.com/v4company/studio-v4/releases/latest/download/Studio.V4.Setup.1.0.0.exe" class="btn btn-primary">
+        Baixar Studio V4
+      </a>
+      <a href="https://github.com/v4company/studio-v4/releases" class="btn btn-secondary">
+        Ver todas as versoes
+      </a>
+    </div>
+  </section>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon" style="background: rgba(229,9,20,0.15); color: #e50914;">&#9988;</div>
+      <h3>Corte Limpo</h3>
+      <p>Detecta silencio real sem cortar micro-falas, silabas curtas e respiracoes. Diferente do corte bruto do CapCut.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon" style="background: rgba(82,204,90,0.15); color: #52cc5a;">&#9998;</div>
+      <h3>Transcricao PT-BR</h3>
+      <p>Transcreve audio com acentuacao, virgulas e pontuacao correta. Tambem entende ingles e espanhol.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon" style="background: rgba(66,133,244,0.15); color: #4285f4;">&#9729;</div>
+      <h3>Google Drive</h3>
+      <p>Salve e abra projetos no Drive. Acesse de qualquer computador apos login.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon" style="background: rgba(255,193,7,0.15); color: #ffc107;">&#128193;</div>
+      <h3>Aceita Tudo</h3>
+      <p>Jogue qualquer arquivo: MP4, MOV, MKV, OGG do WhatsApp, WAV, PNG. Converte automaticamente.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon" style="background: rgba(156,39,176,0.15); color: #9c27b0;">&#127912;</div>
+      <h3>Presets Multi-Programa</h3>
+      <p>Importe LUTs e presets de Adobe, DaVinci, CapCut e Sony Vegas. Organize em pastas.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6);">&#8734;</div>
+      <h3>Timeline Infinita</h3>
+      <p>Tracks ilimitadas com overlay. Crie multiplas timelines independentes. Zoom e scroll sem limite.</p>
+    </div>
+  </div>
+
+  <section class="formats">
+    <h2>Formatos suportados</h2>
+    <p>Importa e converte automaticamente</p>
+    <div class="format-tags">
+      <span class="format-tag">MP4</span>
+      <span class="format-tag">MOV</span>
+      <span class="format-tag">MKV</span>
+      <span class="format-tag">AVI</span>
+      <span class="format-tag">WebM</span>
+      <span class="format-tag">OGG</span>
+      <span class="format-tag">OPUS</span>
+      <span class="format-tag">MP3</span>
+      <span class="format-tag">WAV</span>
+      <span class="format-tag">AAC</span>
+      <span class="format-tag">FLAC</span>
+      <span class="format-tag">M4A</span>
+      <span class="format-tag">PNG</span>
+      <span class="format-tag">JPG</span>
+      <span class="format-tag">WebP</span>
+      <span class="format-tag">HEIC</span>
+      <span class="format-tag">.cube</span>
+      <span class="format-tag">.ffx</span>
+      <span class="format-tag">.mogrt</span>
+      <span class="format-tag">.lut</span>
+    </div>
+  </section>
+
+  <footer>
+    <a href="https://studiov4.pages.dev" style="color:rgba(255,255,255,0.3);text-decoration:none">studiov4.pages.dev</a> &mdash; V4 Company &mdash; Gratuito e sem marca d'agua
+  </footer>
+</body>
+</html>

@@ -1,0 +1,21 @@
+export const savedLayoutKey = "v4-video-studio-layout-preset";
+export const driveSnapshotKey = "v4-video-studio-drive-snapshot";
+export const googleAccessTokenKey = "v4-video-studio-google-access-token";
+export const googleTokenExpKey = "v4-video-studio-google-token-exp";
+export const googleRefreshTokenKey = "v4-video-studio-google-refresh-token";
+export const googleDriveFolderIdKey = "v4-video-studio-google-folder-id";
+export const googleDriveFolderNameKey = "v4-video-studio-google-folder-name";
+export const googleDriveProjectFileIdKey = "v4-video-studio-google-project-file-id";
+export const googleDriveProfileKey = "v4-video-studio-google-profile";
+export const googleDriveConnectedAtKey = "v4-video-studio-google-connected-at";
+export const googleDriveClientIdKey = "v4-video-studio-google-client-id";
+export const brandPatternsKey = "v4-video-studio-brand-patterns";
+export const recentVideosKey = "v4-video-studio-recent-videos";
+export const persistentPresetsKey = "v4-video-studio-persistent-presets";
+export const timelineDragMime = "application/x-v4-studio-timeline";
+
+export const defaultDriveFolder = "Studio V4";
+export const googleDriveScope = "openid email profile https://www.googleapis.com/auth/drive";
+export const googleClientIdSuffix = ".apps.googleusercontent.com";
+export const ORG_DRIVE_FOLDER_ID = "11IpQps_7FRy5uouYmQVh4BeJWoIEAZPm";
+export const ORG_DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${ORG_DRIVE_FOLDER_ID}`;
