@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("studioV4", {
       ipcRenderer.on("media:progress", handler);
       return () => ipcRenderer.removeListener("media:progress", handler);
     },
+    registerProxy: (filePath) => ipcRenderer.invoke("media:register-proxy", filePath),
   },
 
   // ── Google Auth ───────────────────────────────────────────────────────────

@@ -936,6 +936,16 @@ ipcMain.handle("write-config", (_event, data) => {
   } catch { return false; }
 });
 
+// Registra caminho no proxy sem re-ingerir (para restaurar projetos salvos)
+ipcMain.handle("media:register-proxy", (_event, filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    proxyPaths.add(filePath);
+    const port = server?.address()?.port ?? preferredPort;
+    return { url: `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(filePath)}` };
+  }
+  return { error: "Arquivo nao encontrado: " + filePath };
+});
+
 ipcMain.handle("open-file-dialog", async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const result = await dialog.showOpenDialog(mainWindow, {

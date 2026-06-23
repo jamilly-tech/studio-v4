@@ -78,6 +78,9 @@ export function App() {
   const [captionY, setCaptionY] = useState(18);
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wmRemoving, setWmRemoving] = useState(false);
+  const [exportResolution, setExportResolution] = useState<"720p" | "1080p">("1080p");
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const dragCounterRef = useRef(0);
@@ -146,12 +149,36 @@ export function App() {
     captionSegments,
   }), [projectName, assets, visualCopies, captionSegments]);
 
-  const handleLoadProject = useCallback((snapshot: unknown) => {
+  const handleLoadProject = useCallback(async (snapshot: unknown) => {
     const data = snapshot as any;
     if (data.projectName) setProjectName(data.projectName);
-    if (data.assets) setAssets(data.assets);
     if (data.visualCopies) setVisualCopies(data.visualCopies);
     if (data.captionSegments) setCaptionSegments(data.captionSegments);
+
+    if (data.assets && Array.isArray(data.assets)) {
+      // Re-registra caminhos no proxy do servidor local e reconstrói URLs
+      const restored = await Promise.all(
+        (data.assets as ImportedAsset[]).map(async (a) => {
+          if (!a.filePath) return a;
+          const reg = await window.studioV4?.media?.registerProxy?.(a.filePath);
+          if (reg?.url) return { ...a, url: reg.url, previewUrl: reg.url };
+          return a;
+        })
+      );
+      setAssets(restored);
+
+      // Atualiza projetos recentes
+      if (data.projectName) {
+        const recent = [
+          { name: data.projectName, date: new Date().toISOString() },
+          ...((await window.studioV4?.readRecentProjects?.()) as any[] ?? [])
+            .filter((r: any) => r.name !== data.projectName)
+            .slice(0, 9),
+        ];
+        window.studioV4?.writeRecentProjects?.(recent);
+        setRecentVideos(recent);
+      }
+    }
   }, [setAssets, setVisualCopies]);
 
   useEffect(() => {
@@ -168,6 +195,13 @@ export function App() {
   useEffect(() => {
     window.studioV4?.readRecentProjects?.().then((data) => {
       if (Array.isArray(data)) setRecentVideos(data as RecentVideoProject[]);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!window.studioV4?.onExportProgress) return;
+    return window.studioV4.onExportProgress((data: { percent: number; outputPath?: string }) => {
+      setExportProgress(data.percent);
     });
   }, []);
 
@@ -283,7 +317,22 @@ export function App() {
       case "import": handleImport(); break;
       case "export": setDialog("export"); break;
       case "drive": setDialog("drive"); break;
-      case "save": case "save-file": setDialog("save"); break;
+      case "save": case "save-file": {
+        const snap = getProjectSnapshot();
+        window.studioV4?.saveProjectFile?.({ snapshot: snap, defaultName: projectName }).then((savedPath) => {
+          if (savedPath) {
+            window.studioV4?.readRecentProjects?.().then((prev) => {
+              const list = [
+                { name: projectName, date: new Date().toISOString() },
+                ...((prev as any[] ?? []).filter((r: any) => r.name !== projectName).slice(0, 9)),
+              ];
+              window.studioV4?.writeRecentProjects?.(list);
+              setRecentVideos(list);
+            });
+          }
+        });
+        break;
+      }
       case "help": setDialog("help"); break;
       case "cut-clean":
         setScreen("editor");
@@ -789,6 +838,44 @@ export function App() {
                       onApplyEffect={(id, css) => { setActiveEffect(id); setActiveEffectCss(css); }}
                       previewFrameUrl={previewAsset?.thumbnailUrl}
                     />
+                  ) : activeTool === "text" ? (
+                    <div className="flex flex-col gap-3">
+                      <h3 className="text-xs font-black">Texto</h3>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Para adicionar legendas e texto ao vídeo use o painel <strong>Legendas</strong> (ícone Cc na barra lateral) com transcrição automática.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTool("captions")}
+                        className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary/90 transition"
+                      >
+                        Ir para Legendas
+                      </button>
+                    </div>
+                  ) : activeTool === "audio" ? (
+                    <div className="flex flex-col gap-3">
+                      <h3 className="text-xs font-black">Áudio IA</h3>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Use o <strong>Corte Limpo</strong> para remover silêncios automaticamente com análise de áudio.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTool("ai")}
+                        className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary/90 transition"
+                      >
+                        Ir para Corte Limpo
+                      </button>
+                      {previewAsset?.waveformPeaks && previewAsset.waveformPeaks.length > 0 && (
+                        <div>
+                          <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider mb-1">Waveform</p>
+                          <div className="flex h-12 items-end gap-px rounded bg-muted/30 px-1">
+                            {previewAsset.waveformPeaks.map((peak, i) => (
+                              <div key={i} className="flex-1 bg-primary/60 rounded-sm" style={{ height: `${Math.max(4, peak * 100)}%` }} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   ) : activeTool === "media" && !previewAsset ? (
                     <DrivePanel
                       connected={driveConnected}
@@ -856,6 +943,119 @@ export function App() {
             />
           </main>
         </div>
+
+        {/* ── Modal: Exportar ── */}
+        {dialog === "export" && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { if (exportProgress === null || exportProgress === 100) setDialog(null); }}>
+            <div className="w-[420px] rounded-xl border border-border bg-background p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-sm font-black mb-4">Exportar Vídeo</h2>
+
+              {exportProgress !== null && exportProgress < 100 ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">Exportando... {exportProgress}%</p>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${exportProgress}%` }} />
+                  </div>
+                </div>
+              ) : exportProgress === 100 ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-green-500 font-bold">Exportação concluída!</p>
+                  <button type="button" onClick={() => { setDialog(null); setExportProgress(null); }} className="w-full rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90">
+                    Fechar
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {exportError && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                      <p className="text-[11px] text-destructive">{exportError}</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider mb-1.5">Resolução</p>
+                    <div className="flex gap-2">
+                      {(["720p", "1080p"] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setExportResolution(r)}
+                          className={`flex-1 rounded-lg border py-2 text-xs font-bold transition ${exportResolution === r ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                        >
+                          {r === "720p" ? "720p (HD)" : "1080p (Full HD)"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-muted-foreground space-y-0.5">
+                    <p>{visualCopies.length} clipe{visualCopies.length !== 1 ? "s" : ""} na timeline</p>
+                    <p>Formato: MP4 H.264 — AAC 192k</p>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => { setDialog(null); setExportError(null); }} className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground">
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={visualCopies.length === 0}
+                      onClick={async () => {
+                        setExportError(null);
+                        const outputPath = await window.studioV4?.showSaveDialog?.({
+                          title: "Exportar vídeo",
+                          defaultPath: projectName || "export",
+                          filters: [{ name: "Vídeo MP4", extensions: ["mp4"] }],
+                        });
+                        if (!outputPath) return;
+                        setExportProgress(0);
+                        try {
+                          const clips = visualCopies.map((c) => {
+                            const asset = assets.find((a) => a.id === c.assetId);
+                            return {
+                              filePath: asset?.filePath || "",
+                              trimStart: c.trimStart ?? 0,
+                              duration: c.duration ?? 5,
+                              speed: c.speed ?? 1,
+                            };
+                          });
+                          await window.studioV4?.exportVideo?.({ clips, outputPath, resolution: exportResolution });
+                        } catch (err) {
+                          setExportProgress(null);
+                          setExportError(err instanceof Error ? err.message : "Erro ao exportar");
+                        }
+                      }}
+                      className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-40"
+                    >
+                      Exportar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Modal: Drive (quando chamado pelo menu) ── */}
+        {dialog === "drive" && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDialog(null)}>
+            <div className="w-[360px] rounded-xl border border-border bg-background p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-black">Google Drive</h2>
+                <button type="button" onClick={() => setDialog(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
+              </div>
+              <DrivePanel
+                connected={driveConnected}
+                profile={googleProfile}
+                projectName={projectName}
+                onConnect={(p) => { setGoogleProfile(p); setDriveConnected(true); }}
+                onDisconnect={() => { setGoogleProfile(null); setDriveConnected(false); }}
+                onLoadProject={(snap) => { handleLoadProject(snap); setDialog(null); setScreen("editor"); }}
+                getProjectSnapshot={getProjectSnapshot}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </EditorShell>
   );
@@ -873,7 +1073,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function stageLabel(stage: string): string {
   const map: Record<string, string> = {
     probe: "Analisando", thumbnail: "Thumbnail", waveform: "Waveform",
-    proxy: "Criando proxy", convert: "Convertendo", strip: "Timeline", done: "Pronto",
+    proxy: "Criando proxy", "proxy-done": "Proxy pronto",
+    convert: "Convertendo", "convert-done": "Convertido",
+    strip: "Timeline", transcribe: "Transcrevendo", done: "Pronto",
   };
   return map[stage] || stage;
 }

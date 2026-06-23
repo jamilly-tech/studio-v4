@@ -76,6 +76,7 @@ declare global {
         transcribe: (filePath: string, language?: string) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
         removeWatermark: (filePath: string, region: { x: number; y: number; w: number; h: number }) => Promise<{ outputPath: string; proxyUrl: string }>;
         onProgress: (cb: (data: MediaProgressEvent) => void) => () => void;
+        registerProxy: (filePath: string) => Promise<{ url?: string; error?: string }>;
       };
 
       googleAuth: () => Promise<{ accessToken: string; refreshToken: string | null; expiresIn: number }>;
