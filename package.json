@@ -4,14 +4,15 @@
   "description": "Studio V4 — Editor de vídeo desktop com IA, timeline e integração Google Drive",
   "private": true,
   "main": "electron/main.cjs",
-  "author": "V4 Company",
+  "author": "Kalyna Lima (V4 Aguiar) & Jamilly Barros (V4 Jasson Oliveira e Co)",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "start": "electron .",
     "pack": "npm run build && electron-builder --win portable nsis",
-    "publish": "npm run build && electron-builder --win nsis --publish always"
+    "publish": "npm run build && electron-builder --win nsis --publish always",
+    "serve-site": "node ../site-server.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -41,7 +42,7 @@
   "build": {
     "appId": "com.v4company.studiov4",
     "productName": "Studio V4",
-    "copyright": "V4 Company",
+    "copyright": "V4 Aguiar & V4 Jasson Oliveira e Co",
     "asar": true,
     "directories": {
       "output": "release"

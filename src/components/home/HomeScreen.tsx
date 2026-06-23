@@ -25,13 +25,13 @@ export function HomeScreen({
 }) {
   return (
     <section className="relative min-h-0 flex-1 overflow-y-auto bg-background p-5 text-foreground">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--background)),hsl(var(--card))_50%,hsl(var(--background)))]" />
-      <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(#fff_1px,transparent_1px),linear-gradient(90deg,#fff_1px,transparent_1px)] [background-size:44px_44px]" />
+      <div className="absolute inset-0 bg-card/30" />
+      <div className="absolute inset-0 opacity-[0.04] [background-image:linear-gradient(hsl(var(--foreground))_1px,transparent_1px),linear-gradient(90deg,hsl(var(--foreground))_1px,transparent_1px)] [background-size:44px_44px]" />
 
       <div className="home-reveal relative z-10 mx-auto grid w-full max-w-7xl gap-5">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <img src={logoWhite} alt="V4 Company" className="h-10 w-36 object-contain object-left" />
+            <img src={logoWhite} alt="Studio V4" className="h-10 w-36 object-contain object-left" />
             <div>
               <p className="text-lg font-black">Studio V4</p>
               <p className="text-xs font-semibold text-white/50">Editor</p>
@@ -111,6 +111,14 @@ export function HomeScreen({
             </div>
           </div>
         )}
+        <footer className="mt-8 border-t border-border/30 pt-6 text-center">
+          <p className="text-xs font-black text-white/70 tracking-wide">Studio V4</p>
+          <p className="mt-2 text-[11px] text-white/50">
+            Criado pela <span className="text-white/80 font-bold">Kalyna Lima — V4 Aguiar</span>
+            {" "}e <span className="text-white/80 font-bold">Jamilly Barros — V4 Jasson Oliveira e Co</span>
+          </p>
+          <p className="mt-1 text-[9px] text-white/25">Todos os direitos reservados</p>
+        </footer>
       </div>
     </section>
   );

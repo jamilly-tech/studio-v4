@@ -48,7 +48,7 @@ export function TopBar({
       <div className="flex items-center gap-3">
         <img
           src={theme === "dark" ? logoWhite : logoRed}
-          alt="V4 Company"
+          alt="Studio V4"
           className="h-7 w-28 object-contain object-left"
         />
         <div className="relative">

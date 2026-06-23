@@ -20,15 +20,17 @@ interface TimelineProps {
   onSelectAsset: (id: string | null) => void;
   currentTime: number;
   onSeek: (time: number) => void;
+  onDropAsset?: (assetId: string, atTime: number) => void;
 }
 
 export function Timeline({
   assets, visualCopies, onSetVisualCopies,
-  selectedAssetId, onSelectAsset, currentTime, onSeek,
+  selectedAssetId, onSelectAsset, currentTime, onSeek, onDropAsset,
 }: TimelineProps) {
   const [zoom, setZoom] = useState(1);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{ id: string; startX: number; origTime: number } | null>(null);
+  const [dropHighlight, setDropHighlight] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Multi-timeline slots
@@ -242,7 +244,29 @@ export function Timeline({
       </div>
 
       {/* Body */}
-      <div ref={scrollRef} className="relative flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        className={`relative flex-1 overflow-auto transition-colors ${dropHighlight ? "bg-primary/5 outline outline-1 outline-primary/30" : ""}`}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("text/plain")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setDropHighlight(true);
+          }
+        }}
+        onDragLeave={() => setDropHighlight(false)}
+        onDrop={(e) => {
+          setDropHighlight(false);
+          const data = e.dataTransfer.getData("text/plain");
+          if (!data.startsWith("asset:") || !onDropAsset) return;
+          e.preventDefault();
+          const assetId = data.slice(6);
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - rect.left + e.currentTarget.scrollLeft - 56;
+          const time = Math.max(0, x / pxPerSec);
+          onDropAsset(assetId, time);
+        }}
+      >
         {/* Ruler */}
         <div
           className="sticky top-0 z-10 h-5 border-b border-border bg-card/80 backdrop-blur-sm cursor-pointer"
@@ -320,8 +344,8 @@ export function Timeline({
 
         {visualCopies.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-[11px] text-muted-foreground/40">
-              Clique duplo em um arquivo ou arraste para a timeline
+            <p className="text-[11px] text-muted-foreground/60">
+              Arraste um arquivo da biblioteca ou clique duplo para adicionar
             </p>
           </div>
         )}

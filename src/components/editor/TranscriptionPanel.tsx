@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Captions, Loader2, Play, Copy, Check } from "lucide-react";
+import { Captions, Loader2, Play, Copy, Check, RepeatIcon, Trash2, X } from "lucide-react";
 import type { ImportedAsset, TranscriptSegment } from "@/types/editor";
 
 const LANGUAGES = [
@@ -11,11 +11,49 @@ const LANGUAGES = [
 
 type LangId = typeof LANGUAGES[number]["id"];
 
+interface RepeatGroup {
+  groupId: number;
+  indices: number[];
+  similarity: number;
+}
+
 interface TranscriptionPanelProps {
   assets: ImportedAsset[];
   selectedAssetId: string | null;
   onSeek: (time: number) => void;
   onCaptionsGenerated: (segments: TranscriptSegment[]) => void;
+}
+
+// Compara dois textos por sobreposicao de palavras (Jaccard)
+function wordSimilarity(a: string, b: string): number {
+  const normalize = (t: string) => t.toLowerCase().replace(/[^\w\s]/g, "").trim();
+  const wordsOf = (t: string) => new Set(normalize(t).split(/\s+/).filter((w) => w.length > 2));
+  const wA = wordsOf(a);
+  const wB = wordsOf(b);
+  if (wA.size === 0 || wB.size === 0) return 0;
+  const intersection = [...wA].filter((w) => wB.has(w)).length;
+  const union = new Set([...wA, ...wB]).size;
+  return intersection / union;
+}
+
+function findRepeatedGroups(segments: TranscriptSegment[]): RepeatGroup[] {
+  const groups: RepeatGroup[] = [];
+  const used = new Set<number>();
+
+  for (let i = 0; i < segments.length; i++) {
+    if (used.has(i)) continue;
+    for (let j = i + 1; j < segments.length; j++) {
+      if (used.has(j)) continue;
+      const sim = wordSimilarity(segments[i].text, segments[j].text);
+      if (sim >= 0.7) {
+        groups.push({ groupId: groups.length, indices: [i, j], similarity: sim });
+        used.add(i);
+        used.add(j);
+        break;
+      }
+    }
+  }
+  return groups;
 }
 
 export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptionsGenerated }: TranscriptionPanelProps) {
@@ -25,6 +63,11 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
   const [transcribedAssetId, setTranscribedAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Falas repetidas
+  const [repeatMode, setRepeatMode] = useState(false);
+  const [repeatGroups, setRepeatGroups] = useState<RepeatGroup[]>([]);
+  const [toDelete, setToDelete] = useState<Set<number>>(new Set());
 
   const selectedAsset = assets.find((a) => a.id === selectedAssetId);
   const hasAudio = selectedAsset && (selectedAsset.kind === "video" || selectedAsset.kind === "audio");
@@ -39,6 +82,7 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
     setTranscribing(true);
     setError(null);
     setSegments([]);
+    setRepeatMode(false);
 
     try {
       const result = await window.studioV4.media.transcribe(selectedAsset.filePath, language);
@@ -63,6 +107,31 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleCheckRepeats() {
+    const groups = findRepeatedGroups(segments);
+    setRepeatGroups(groups);
+    setToDelete(new Set());
+    setRepeatMode(true);
+  }
+
+  function toggleDelete(index: number) {
+    setToDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function applyDeletions() {
+    const remaining = segments.filter((_, i) => !toDelete.has(i));
+    setSegments(remaining);
+    onCaptionsGenerated(remaining);
+    setRepeatMode(false);
+    setRepeatGroups([]);
+    setToDelete(new Set());
   }
 
   return (
@@ -122,7 +191,7 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
         </div>
       )}
 
-      {segments.length > 0 && transcribedAssetId === selectedAssetId && (
+      {segments.length > 0 && transcribedAssetId === selectedAssetId && !repeatMode && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">
@@ -138,7 +207,7 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
             </button>
           </div>
 
-          <div className="max-h-[300px] overflow-y-auto rounded-lg border border-border">
+          <div className="max-h-[240px] overflow-y-auto rounded-lg border border-border">
             {segments.map((seg, i) => (
               <div
                 key={i}
@@ -154,13 +223,124 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] leading-relaxed">{seg.text}</p>
-                  <p className="mt-0.5 text-[8px] font-mono text-muted-foreground/50">
+                  <p className="mt-0.5 text-[8px] font-mono text-muted-foreground/60">
                     {formatTime(seg.start)} — {formatTime(seg.end)}
                   </p>
                 </div>
               </div>
             ))}
           </div>
+
+          {/* Botao verificar falas repetidas */}
+          <button
+            type="button"
+            onClick={handleCheckRepeats}
+            className="flex items-center justify-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition"
+          >
+            <RepeatIcon className="size-3.5" />
+            Verificar Falas Repetidas
+          </button>
+        </div>
+      )}
+
+      {/* Modo: revisao de falas repetidas */}
+      {repeatMode && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                <RepeatIcon className="size-3.5" />
+                Falas Repetidas
+              </p>
+              <p className="mt-0.5 text-[9px] text-muted-foreground">
+                {repeatGroups.length > 0
+                  ? `${repeatGroups.length} par${repeatGroups.length > 1 ? "es" : ""} encontrado${repeatGroups.length > 1 ? "s" : ""}. Marque o que excluir.`
+                  : "Nenhuma fala repetida encontrada."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRepeatMode(false)}
+              className="grid size-5 place-items-center rounded text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+
+          {repeatGroups.length > 0 ? (
+            <>
+              <div className="max-h-[280px] overflow-y-auto flex flex-col gap-2">
+                {repeatGroups.map((group) => (
+                  <div key={group.groupId} className="rounded-lg border border-border bg-card overflow-hidden">
+                    <div className="border-b border-border/60 bg-amber-500/8 px-2.5 py-1">
+                      <p className="text-[8px] font-bold text-amber-400/80 uppercase tracking-wider">
+                        Par {group.groupId + 1} — {Math.round(group.similarity * 100)}% similar
+                      </p>
+                    </div>
+                    {group.indices.map((segIdx) => {
+                      const seg = segments[segIdx];
+                      const marked = toDelete.has(segIdx);
+                      return (
+                        <div
+                          key={segIdx}
+                          className={`flex items-start gap-2 px-2.5 py-2 border-b border-border/40 last:border-0 cursor-pointer transition ${
+                            marked ? "bg-destructive/10" : "hover:bg-muted/30"
+                          }`}
+                          onClick={() => toggleDelete(segIdx)}
+                        >
+                          <div className={`mt-0.5 shrink-0 grid size-4 place-items-center rounded border transition ${
+                            marked
+                              ? "border-destructive bg-destructive text-white"
+                              : "border-border text-transparent"
+                          }`}>
+                            {marked && <Trash2 className="size-2.5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-[10px] leading-relaxed ${marked ? "line-through text-muted-foreground" : ""}`}>
+                              {seg.text}
+                            </p>
+                            <p className="mt-0.5 text-[8px] font-mono text-muted-foreground/60">
+                              {formatTime(seg.start)} — {formatTime(seg.end)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onSeek(seg.start); }}
+                            className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary"
+                          >
+                            <Play className="size-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={applyDeletions}
+                  disabled={toDelete.size === 0}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-destructive/80 px-3 py-2 text-xs font-bold text-white hover:bg-destructive transition disabled:opacity-40"
+                >
+                  <Trash2 className="size-3.5" />
+                  Excluir {toDelete.size > 0 ? `${toDelete.size} trecho${toDelete.size > 1 ? "s" : ""}` : "selecionados"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRepeatMode(false)}
+                  className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-card transition"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-lg border border-border bg-card p-3 text-center">
+              <p className="text-[10px] text-muted-foreground">Nenhuma repeticao detectada nos trechos.</p>
+            </div>
+          )}
         </div>
       )}
     </div>

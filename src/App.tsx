@@ -80,6 +80,7 @@ export function App() {
   const [wmRemoving, setWmRemoving] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const dragCounterRef = useRef(0);
 
   const { assets, setAssets, addAssets, selectedAssetId, setSelectedAssetId, updateAsset } = useAssetsStore();
   const { visualCopies, setVisualCopies, undo, redo, clear: timelineClear } = useTimelineStore();
@@ -226,19 +227,40 @@ export function App() {
 
   const handleDrop = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
+    dragCounterRef.current = 0;
     setDropHighlight(false);
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      const paths = files.map((f) => {
-        if (window.studioV4?.getPathForFile) return window.studioV4.getPathForFile(f);
-        return (f as any).path || null;
-      }).filter(Boolean) as string[];
-      if (paths.length > 0) ingestFiles(paths);
+    if (files.length === 0) return;
+    const paths: string[] = [];
+    for (const f of files) {
+      let p: string | null = null;
+      if (window.studioV4?.getPathForFile) {
+        try { p = window.studioV4.getPathForFile(f); } catch {}
+      }
+      if (!p) p = (f as any).path || null;
+      if (p) paths.push(p);
     }
+    if (paths.length > 0) ingestFiles(paths);
   }, [ingestFiles]);
 
-  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => { e.preventDefault(); setDropHighlight(true); }, []);
-  const handleDragLeave = useCallback(() => setDropHighlight(false), []);
+  const handleDragEnter = useCallback((e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.types.includes("Files")) setDropHighlight(true);
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes("Files")) setDropHighlight(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setDropHighlight(false);
+    }
+  }, []);
 
   const addToTimeline = useCallback((asset: ImportedAsset) => {
     const endTime = visualCopies.reduce((max, c) => Math.max(max, (c.startTime ?? 0) + (c.duration ?? 5)), 0);
@@ -259,6 +281,19 @@ export function App() {
       case "drive": setDialog("drive"); break;
       case "save": case "save-file": setDialog("save"); break;
       case "help": setDialog("help"); break;
+      case "cut-clean":
+        setScreen("editor");
+        setActiveTool("ai");
+        break;
+      case "captions-panel":
+        setScreen("editor");
+        setActiveTool("captions");
+        break;
+      case "open-file":
+        window.studioV4?.openProjectFile?.().then((data: unknown) => {
+          if (data) { handleLoadProject(data); setScreen("editor"); }
+        }).catch(() => {});
+        break;
       default: break;
     }
   }
@@ -289,7 +324,7 @@ export function App() {
 
   return (
     <EditorShell theme={theme}>
-      <div className="flex h-screen flex-col" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+      <div className="flex h-screen flex-col" onDrop={handleDrop} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
         <TopBar
           theme={theme} projectName={projectName} driveConnected={driveConnected} googleProfile={googleProfile}
           onProjectNameChange={setProjectName} onThemeChange={setTheme} onMenuCommand={handleMenuCommand} onAction={() => {}}
@@ -381,7 +416,12 @@ export function App() {
                         return (
                           <div
                             key={asset.id}
-                            className={`group flex items-center gap-2 rounded-lg px-2 py-2 cursor-pointer transition ${
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", `asset:${asset.id}`);
+                              e.dataTransfer.effectAllowed = "copy";
+                            }}
+                            className={`group flex items-center gap-2 rounded-lg px-2 py-2 cursor-grab active:cursor-grabbing transition ${
                               selectedAssetId === asset.id ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-card"
                             }`}
                             onClick={() => setSelectedAssetId(asset.id)}
@@ -803,6 +843,12 @@ export function App() {
               onSelectAsset={setSelectedAssetId}
               currentTime={currentTime}
               onSeek={(t) => { setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
+              onDropAsset={(assetId, atTime) => {
+                const asset = assets.find((a) => a.id === assetId);
+                if (!asset) return;
+                const copy = createTimelineCopyForAsset(asset, atTime);
+                setVisualCopies((prev) => [...prev, copy]);
+              }}
             />
           </main>
         </div>
