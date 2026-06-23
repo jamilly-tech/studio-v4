@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Studio V4 — Editor de Vídeo Profissional</title>
+  <meta name="description" content="Editor de vídeo desktop gratuito com corte limpo inteligente, transcrição automática e Google Drive. Aceita qualquer formato.">
+  <link rel="canonical" href="https://studiov4.pages.dev">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Montserrat', sans-serif; background: #080808; color: #f5f5f5; min-height: 100vh; }
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 2rem; position: relative; overflow: hidden;
+      background: linear-gradient(180deg, #080808 0%, #111 50%, #0a0a0a 100%);
+    }
+    .hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 50% 30%, rgba(229,9,20,0.08) 0%, transparent 70%); }
+    .hero > * { position: relative; z-index: 1; }
+    .badge { display:inline-flex; align-items:center; gap:0.5rem; padding:0.4rem 1rem; border-radius:999px; border:1px solid rgba(229,9,20,0.3); background:rgba(229,9,20,0.08); font-size:0.75rem; font-weight:700; color:#e50914; margin-bottom:1.5rem; }
+    h1 { font-size:clamp(2.5rem,6vw,4.5rem); font-weight:900; line-height:1.1; max-width:800px; margin-bottom:1.5rem; }
+    h1 span { color:#e50914; }
+    .subtitle { font-size:clamp(1rem,2vw,1.25rem); color:rgba(255,255,255,0.5); max-width:600px; line-height:1.6; margin-bottom:2.5rem; }
+    .buttons { display:flex; gap:1rem; flex-wrap:wrap; justify-content:center; }
+    .btn { display:inline-flex; align-items:center; gap:0.5rem; padding:0.9rem 2rem; border-radius:0.75rem; font-weight:900; font-size:1rem; text-decoration:none; transition:all 0.2s; cursor:pointer; border:none; }
+    .btn-primary { background:#e50914; color:white; box-shadow:0 0 0 1px rgba(229,9,20,0.4),0 20px 60px rgba(229,9,20,0.2); }
+    .btn-primary:hover { background:#cc0812; transform:translateY(-2px); }
+    .btn-secondary { background:rgba(255,255,255,0.06); color:white; border:1px solid rgba(255,255,255,0.12); }
+    .btn-secondary:hover { background:rgba(255,255,255,0.1); }
+    .app-preview { max-width:900px; width:100%; margin:3rem auto 0; border-radius:0.75rem; overflow:hidden; border:1px solid rgba(255,255,255,0.08); box-shadow:0 40px 120px rgba(0,0,0,0.6); }
+    .app-preview img { width:100%; display:block; }
+    .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1.5rem; max-width:1000px; margin:4rem auto; padding:0 2rem; }
+    .feature { padding:1.5rem; border-radius:1rem; border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
+    .fi { width:40px; height:40px; border-radius:0.75rem; display:grid; place-items:center; margin-bottom:1rem; }
+    .fi svg { width:20px; height:20px; }
+    .feature h3 { font-size:1rem; font-weight:900; margin-bottom:0.5rem; }
+    .feature p { font-size:0.85rem; color:rgba(255,255,255,0.45); line-height:1.5; }
+    .formats { text-align:center; padding:3rem 2rem; border-top:1px solid rgba(255,255,255,0.05); }
+    .formats h2 { font-size:1.5rem; font-weight:900; margin-bottom:0.5rem; }
+    .formats p { color:rgba(255,255,255,0.4); font-size:0.85rem; margin-bottom:1.5rem; }
+    .format-tags { display:flex; flex-wrap:wrap; justify-content:center; gap:0.5rem; max-width:700px; margin:0 auto; }
+    .format-tag { padding:0.3rem 0.8rem; border-radius:0.5rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); font-size:0.75rem; font-weight:700; color:rgba(255,255,255,0.5); }
+    .cta-bottom { text-align:center; padding:4rem 2rem; }
+    .cta-bottom h2 { font-size:2rem; font-weight:900; margin-bottom:1rem; }
+    .cta-bottom p { color:rgba(255,255,255,0.4); margin-bottom:2rem; }
+    .credits { text-align:center; padding:3rem 2rem 2rem; border-top:1px solid rgba(255,255,255,0.05); }
+    .credits-title { font-size:0.7rem; font-weight:700; color:rgba(255,255,255,0.25); text-transform:uppercase; letter-spacing:0.12em; margin-bottom:1.5rem; }
+    .credits-grid { display:flex; flex-wrap:wrap; justify-content:center; gap:2rem; max-width:500px; margin:0 auto; }
+    .credit-card { text-align:center; }
+    .credit-role { font-size:0.65rem; color:rgba(255,255,255,0.3); font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.3rem; }
+    .credit-name { font-size:0.95rem; font-weight:900; color:rgba(255,255,255,0.85); }
+    .credit-company { font-size:0.75rem; color:#e50914; font-weight:700; margin-top:0.15rem; }
+    footer { text-align:center; padding:1.5rem 2rem; border-top:1px solid rgba(255,255,255,0.05); font-size:0.7rem; color:rgba(255,255,255,0.2); }
+    @media(max-width:640px) { .buttons{flex-direction:column;align-items:center} .btn{width:100%;max-width:300px;justify-content:center} }
+  </style>
+</head>
+<body>
+  <section class="hero">
+    <div class="badge">Gratuito para Windows</div>
+    <h1>Edite vídeo como <span>profissional</span></h1>
+    <p class="subtitle">
+      Corte limpo inteligente que preserva sua fala. Transcrição automática em português.
+      Aceita qualquer formato. Salva no Google Drive.
+    </p>
+    <div class="buttons">
+      <a href="https://github.com/jamilly-tech/studio-v4/releases/download/v1.0.0/Studio-V4-Setup-1.0.0.exe" class="btn btn-primary">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" transform="scale(0.78)"/></svg>
+        Baixar Studio V4
+      </a>
+      <a href="https://github.com/jamilly-tech/studio-v4" class="btn btn-secondary">
+        Código no GitHub
+      </a>
+    </div>
+    <div class="app-preview">
+      <img src="assets/screenshot.jpg" alt="Studio V4 Editor">
+    </div>
+  </section>
+
+  <div class="features">
+    <div class="feature">
+      <div class="fi" style="background:rgba(229,9,20,0.12)">
+        <svg fill="none" stroke="#e50914" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><path d="M6 21V9M18 9a3 3 0 100-6 3 3 0 000 6zM18 9v12"/></svg>
+      </div>
+      <h3>Corte Limpo</h3>
+      <p>Detecta silêncio real sem cortar micro-falas, sílabas curtas e respirações. Diferente do corte bruto do CapCut.</p>
+    </div>
+    <div class="feature">
+      <div class="fi" style="background:rgba(82,204,90,0.12)">
+        <svg fill="none" stroke="#52cc5a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </div>
+      <h3>Transcrição PT-BR</h3>
+      <p>Transcreve áudio com acentuação, vírgulas e pontuação correta. Também entende inglês e espanhol.</p>
+    </div>
+    <div class="feature">
+      <div class="fi" style="background:rgba(66,133,244,0.12)">
+        <svg fill="none" stroke="#4285f4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
+      </div>
+      <h3>Google Drive</h3>
+      <p>Salve e abra projetos no Drive. Acesse de qualquer computador após login.</p>
+    </div>
+    <div class="feature">
+      <div class="fi" style="background:rgba(255,193,7,0.12)">
+        <svg fill="none" stroke="#ffc107" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      <h3>Aceita Tudo</h3>
+      <p>Jogue qualquer arquivo: MP4, MOV, MKV, OGG do WhatsApp, WAV, PNG. Converte automaticamente.</p>
+    </div>
+    <div class="feature">
+      <div class="fi" style="background:rgba(156,39,176,0.12)">
+        <svg fill="none" stroke="#9c27b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      </div>
+      <h3>Presets Multi-Programa</h3>
+      <p>Importe LUTs e presets de Adobe, DaVinci, CapCut e Sony Vegas. Organize em pastas.</p>
+    </div>
+    <div class="feature">
+      <div class="fi" style="background:rgba(255,255,255,0.06)">
+        <svg fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <h3>Timeline Infinita</h3>
+      <p>Tracks ilimitadas com overlay. Crie múltiplas timelines independentes. Zoom e scroll sem limite.</p>
+    </div>
+  </div>
+
+  <section class="formats">
+    <h2>Formatos suportados</h2>
+    <p>Importa e converte automaticamente</p>
+    <div class="format-tags">
+      <span class="format-tag">MP4</span><span class="format-tag">MOV</span><span class="format-tag">MKV</span>
+      <span class="format-tag">AVI</span><span class="format-tag">WebM</span><span class="format-tag">OGG</span>
+      <span class="format-tag">OPUS</span><span class="format-tag">MP3</span><span class="format-tag">WAV</span>
+      <span class="format-tag">AAC</span><span class="format-tag">FLAC</span><span class="format-tag">M4A</span>
+      <span class="format-tag">PNG</span><span class="format-tag">JPG</span><span class="format-tag">WebP</span>
+      <span class="format-tag">HEIC</span><span class="format-tag">.cube</span><span class="format-tag">.ffx</span>
+      <span class="format-tag">.mogrt</span><span class="format-tag">.lut</span>
+    </div>
+  </section>
+
+  <section class="cta-bottom">
+    <h2>Comece agora</h2>
+    <p>Sem cadastro, sem marca d'água, sem limite de exportação.</p>
+    <a href="https://github.com/jamilly-tech/studio-v4/releases/download/v1.0.0/Studio-V4-Setup-1.0.0.exe" class="btn btn-primary">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" transform="scale(0.78)"/></svg>
+      Baixar Studio V4
+    </a>
+  </section>
+
+  <section class="credits">
+    <p class="credits-title">Criado por</p>
+    <div class="credits-grid">
+      <div class="credit-card">
+        <p class="credit-role">Fundadora & Produto</p>
+        <p class="credit-name">Kalyna Lima</p>
+        <p class="credit-company">V4 Aguiar</p>
+      </div>
+      <div class="credit-card">
+        <p class="credit-role">Engenharia</p>
+        <p class="credit-name">Jamilly Barros</p>
+        <p class="credit-company">V4 Jasson Oliveira e Co</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <a href="https://studiov4.pages.dev" style="color:rgba(255,255,255,0.25);text-decoration:none">studiov4.pages.dev</a>
+    &nbsp;·&nbsp; V4 Aguiar &amp; V4 Jasson Oliveira e Co &nbsp;·&nbsp; Gratuito e sem marca d'água
+  </footer>
+</body>
+</html>
