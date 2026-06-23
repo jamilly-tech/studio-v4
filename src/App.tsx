@@ -158,6 +158,10 @@ export function App() {
     if (!window.studioV4?.media?.onProgress) return;
     return window.studioV4.media.onProgress((data: MediaProgressEvent) => {
       setImportProgress((prev) => ({ ...prev, [data.filePath]: { stage: data.stage, percent: data.percent } }));
+      if (data.stage === "proxy-done" && data.proxyUrl) {
+        const asset = useAssetsStore.getState().assets.find((a) => a.filePath === data.filePath);
+        if (asset) useAssetsStore.getState().updateAsset(asset.id, { url: data.proxyUrl, previewUrl: data.proxyUrl });
+      }
     });
   }, []);
 

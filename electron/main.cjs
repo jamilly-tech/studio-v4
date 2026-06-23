@@ -576,6 +576,8 @@ ipcMain.handle("media:thumbnail-strip", async (_event, filePath, opts = {}) => {
 });
 
 // ── 8. Full Ingest Pipeline ─────────────────────────────────────────────────
+// Retorna rapido (<2s): probe + 1 thumbnail + URL direta.
+// Proxy/waveform/strip rodam em background via setImmediate.
 
 ipcMain.handle("media:ingest", async (_event, filePath) => {
   if (!fs.existsSync(filePath)) return { error: "Arquivo nao encontrado" };
@@ -648,9 +650,9 @@ ipcMain.handle("media:ingest", async (_event, filePath) => {
     needsConvert: false,
   };
 
-  // 3. Gerar thumbnail (vídeo ou imagem)
+  // 3. Thumbnail rapida (unica — nao bloqueia)
   if (kind === "video" || kind === "image") {
-    sendProgress("media:progress", { filePath, stage: "thumbnail", percent: 40 });
+    sendProgress("media:progress", { filePath, stage: "thumbnail", percent: 50 });
     const ts = kind === "video" ? Math.min(1, duration / 4).toFixed(2) : "0";
     const thumbOut = path.join(projectTmpDir, `thumb_${Date.now()}_${safeBaseName(filePath)}.jpg`);
     const thumbArgs = ["-ss", ts, "-i", filePath, "-vframes", "1", "-vf", "scale=320:-2", "-q:v", "3", "-y", thumbOut];
@@ -662,123 +664,66 @@ ipcMain.handle("media:ingest", async (_event, filePath) => {
     }
   }
 
-  // 4. Gerar waveform (áudio ou vídeo com áudio)
-  if (audioStream && (kind === "audio" || kind === "video")) {
-    sendProgress("media:progress", { filePath, stage: "waveform", percent: 55 });
-    const wfResult = await new Promise((resolve) => {
-      const chunks = [];
-      const proc = spawn(ffmpegPath, ["-i", filePath, "-vn", "-af", "aresample=8000", "-f", "s16le", "-ac", "1", "pipe:1"], { windowsHide: true });
-      proc.stdout.on("data", (c) => chunks.push(c));
-      const kill = setTimeout(() => { try { proc.kill(); } catch {} }, 60000);
-      proc.on("close", () => {
-        clearTimeout(kill);
-        const buf = Buffer.concat(chunks);
-        const numSamples = Math.floor(buf.length / 2);
-        if (numSamples === 0) { resolve([]); return; }
-        const numBars = 100;
-        const samplesPerBar = Math.max(1, Math.floor(numSamples / numBars));
-        const peaks = [];
-        for (let i = 0; i < numBars; i++) {
-          let max = 0;
-          const start = i * samplesPerBar * 2;
-          const end = Math.min(start + samplesPerBar * 2, buf.length - 1);
-          for (let j = start; j < end; j += 2) {
-            const sample = Math.abs(buf.readInt16LE(j));
-            if (sample > max) max = sample;
-          }
-          peaks.push(max / 32768);
-        }
-        const peakMax = Math.max(...peaks, 0.01);
-        resolve(peaks.map((p) => p / peakMax));
-      });
-      proc.on("error", () => { clearTimeout(kill); resolve([]); });
-    });
-    result.waveformPeaks = wfResult;
-  }
-
-  // 5. Decidir se precisa proxy/conversão
+  // 4. URL imediata — serve o arquivo original enquanto proxy processa em background
   const codecsNativosVideo = new Set(["h264", "vp8", "vp9", "av1"]);
   const codecsNativosAudio = new Set(["aac", "mp3", "vorbis", "opus", "flac", "pcm_s16le", "pcm_f32le"]);
-  const formatsDirectPlay = new Set([".mp4", ".webm", ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"]);
+  const port = server?.address()?.port ?? preferredPort;
+
+  proxyPaths.add(filePath);
+  const directUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(filePath)}`;
 
   if (kind === "video") {
+    result.proxyUrl = directUrl;
     const videoCodec = videoStream?.codec_name || "";
-    const needsVideoProxy = !codecsNativosVideo.has(videoCodec) || (metadata.video?.height || 0) > 1080;
-    const isLargeFile = fileSize > 500 * 1024 * 1024;
-
-    if (needsVideoProxy || isLargeFile || [".mov", ".mkv", ".avi", ".wmv", ".flv", ".ts", ".mts"].includes(ext)) {
+    const needsProxy = !codecsNativosVideo.has(videoCodec) || [".mov", ".mkv", ".avi", ".wmv", ".flv", ".ts", ".mts"].includes(ext);
+    if (needsProxy) {
       result.needsProxy = true;
-      sendProgress("media:progress", { filePath, stage: "proxy", percent: 65 });
-
-      const proxyOut = path.join(projectTmpDir, `proxy_${Date.now()}_${safeBaseName(filePath)}.mp4`);
-      const proxyArgs = [
-        "-i", filePath,
-        "-vf", "scale=-2:'min(480,ih)'",
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-        "-c:a", "aac", "-b:a", "64k",
-        "-movflags", "+faststart",
-        "-y", proxyOut,
-      ];
-
-      const proxyResult = await runProcess(ffmpegPath, proxyArgs);
-      if (proxyResult.code === 0 && fs.existsSync(proxyOut)) {
-        proxyPaths.add(proxyOut);
-        const port = server?.address()?.port ?? preferredPort;
-        result.proxyUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(proxyOut)}`;
-      }
-    } else {
-      // Pode tocar direto — registra no proxy
-      proxyPaths.add(filePath);
-      const port = server?.address()?.port ?? preferredPort;
-      result.proxyUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(filePath)}`;
+      // Transcodifica em background — envia evento quando pronto
+      setImmediate(async () => {
+        try {
+          sendProgress("media:progress", { filePath, stage: "proxy", percent: 10 });
+          const proxyOut = path.join(projectTmpDir, `proxy_${Date.now()}_${safeBaseName(filePath)}.mp4`);
+          const proxyArgs = [
+            "-i", filePath,
+            "-vf", "scale=-2:'min(480,ih)'",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "-c:a", "aac", "-b:a", "64k",
+            "-movflags", "+faststart",
+            "-y", proxyOut,
+          ];
+          const pr = await runProcess(ffmpegPath, proxyArgs);
+          if (pr.code === 0 && fs.existsSync(proxyOut)) {
+            proxyPaths.add(proxyOut);
+            const newUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(proxyOut)}`;
+            sendProgress("media:progress", { filePath, stage: "proxy-done", percent: 100, proxyUrl: newUrl });
+          }
+        } catch {}
+      });
     }
-
-    // Gerar strip de thumbnails para timeline
-    sendProgress("media:progress", { filePath, stage: "strip", percent: 85 });
-    const stripCount = Math.max(5, Math.min(20, Math.ceil(duration / 3)));
-    const stripThumbs = [];
-    const interval = duration / stripCount;
-    for (let i = 0; i < stripCount; i++) {
-      const ts = (interval * i + interval / 2).toFixed(2);
-      const stripOut = path.join(projectTmpDir, `strip_${Date.now()}_${i}_${safeBaseName(filePath)}.jpg`);
-      const stripArgs = ["-ss", ts, "-i", filePath, "-vframes", "1", "-vf", "scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2", "-q:v", "6", "-y", stripOut];
-      const sr = await runProcess(ffmpegPath, stripArgs);
-      if (sr.code === 0 && fs.existsSync(stripOut)) {
-        proxyPaths.add(stripOut);
-        const port = server?.address()?.port ?? preferredPort;
-        stripThumbs.push(`http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(stripOut)}`);
-      }
-    }
-    result.thumbnailStrip = stripThumbs;
-  }
-
-  if (kind === "audio") {
+  } else if (kind === "audio") {
     const audioCodec = audioStream?.codec_name || "";
     const needsConvert = !codecsNativosAudio.has(audioCodec) || [".ogg", ".opus", ".wma", ".aif", ".aiff"].includes(ext);
-
-    if (needsConvert) {
-      result.needsConvert = true;
-      sendProgress("media:progress", { filePath, stage: "convert", percent: 70 });
-
-      const convOut = path.join(projectTmpDir, `conv_${Date.now()}_${safeBaseName(filePath)}.m4a`);
-      const convArgs = ["-i", filePath, "-vn", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-y", convOut];
-      const convResult = await runProcess(ffmpegPath, convArgs);
-      if (convResult.code === 0 && fs.existsSync(convOut)) {
-        proxyPaths.add(convOut);
-        const port = server?.address()?.port ?? preferredPort;
-        result.convertedUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(convOut)}`;
-      }
+    if (!needsConvert) {
+      result.convertedUrl = directUrl;
+      result.proxyUrl = directUrl;
     } else {
-      proxyPaths.add(filePath);
-      const port = server?.address()?.port ?? preferredPort;
-      result.convertedUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(filePath)}`;
+      result.convertedUrl = directUrl;
+      result.proxyUrl = directUrl;
+      result.needsConvert = true;
+      setImmediate(async () => {
+        try {
+          const convOut = path.join(projectTmpDir, `conv_${Date.now()}_${safeBaseName(filePath)}.m4a`);
+          const cr = await runProcess(ffmpegPath, ["-i", filePath, "-vn", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-y", convOut]);
+          if (cr.code === 0 && fs.existsSync(convOut)) {
+            proxyPaths.add(convOut);
+            const newUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(convOut)}`;
+            sendProgress("media:progress", { filePath, stage: "proxy-done", percent: 100, proxyUrl: newUrl });
+          }
+        } catch {}
+      });
     }
-  }
-
-  if (kind === "image") {
-    proxyPaths.add(filePath);
-    const port = server?.address()?.port ?? preferredPort;
-    result.proxyUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(filePath)}`;
+  } else if (kind === "image") {
+    result.proxyUrl = directUrl;
   }
 
   sendProgress("media:progress", { filePath, stage: "done", percent: 100 });

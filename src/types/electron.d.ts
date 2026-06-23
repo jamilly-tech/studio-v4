@@ -54,8 +54,9 @@ export interface MediaIngestResult {
 
 export interface MediaProgressEvent {
   filePath: string;
-  stage: "probe" | "thumbnail" | "waveform" | "proxy" | "convert" | "strip" | "transcribe" | "done";
+  stage: "probe" | "thumbnail" | "waveform" | "proxy" | "proxy-done" | "convert" | "convert-done" | "strip" | "transcribe" | "done";
   percent: number;
+  proxyUrl?: string;
 }
 
 declare global {
