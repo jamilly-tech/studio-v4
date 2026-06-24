@@ -142,6 +142,11 @@ export type TimelineVisualCopy = {
   speed?: number;
   opacity?: number;
   brightness?: number;
+  volume?: number;
+  posX?: number;
+  posY?: number;
+  scale?: number;
+  rotation?: number;
 };
 
 export type SmartFrame = {

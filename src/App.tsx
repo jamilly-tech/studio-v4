@@ -30,7 +30,7 @@ import {
   Volume2, VolumeX, Music2, ImageIcon, Type, Scissors,
   Wand2, Captions, SlidersHorizontal, Cloud, Layers, Settings,
   Smartphone, Monitor, Square, RectangleHorizontal, Circle,
-  Move, Crop, Eraser, PenTool, ChevronDown, SplitSquareVertical, Stamp,
+  Move, Crop, Eraser, PenTool, ChevronDown, SplitSquareVertical, Stamp, X,
 } from "lucide-react";
 
 type PreviewToolId = "move" | "crop" | "chroma" | "mask-rect" | "mask-circle" | "mask-pen" | "remove-wm" | null;
@@ -110,6 +110,7 @@ export function App() {
   const [captionBgOpacity, setCaptionBgOpacity] = useState(80);
   const [captionShadow, setCaptionShadow] = useState(false);
   const [captionOutline, setCaptionOutline] = useState(false);
+  const [selectedCopyId, setSelectedCopyId] = useState<string | null>(null);
   const [groqKeyInput, setGroqKeyInput] = useState("");
   const [groqKeySaved, setGroqKeySaved] = useState(false);
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -1014,6 +1015,108 @@ export function App() {
               {/* ── Painel direito: contextual ── */}
               <section className="flex w-[260px] min-w-[220px] flex-col border-l border-border bg-background">
                 <div className="flex-1 overflow-y-auto p-3">
+
+                  {/* ── Propriedades do clipe selecionado ── */}
+                  {(() => {
+                    const selCopy = selectedCopyId ? visualCopies.find(c => c.id === selectedCopyId) : null;
+                    if (!selCopy) return null;
+                    const update = (patch: Partial<typeof selCopy>) =>
+                      setVisualCopies(prev => prev.map(c => c.id === selCopy.id ? { ...c, ...patch } : c));
+                    return (
+                      <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 flex flex-col gap-2 mb-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[9px] font-bold text-primary uppercase tracking-wider">Elemento selecionado</p>
+                          <button type="button" onClick={() => setSelectedCopyId(null)}
+                            className="grid size-4 place-items-center rounded text-muted-foreground hover:text-foreground">
+                            <X className="size-3" />
+                          </button>
+                        </div>
+
+                        {/* Opacidade */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Opacidade</label>
+                          <input type="range" min={0} max={100} step={1} value={selCopy.opacity ?? 100}
+                            onChange={e => update({ opacity: Number(e.target.value) })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{selCopy.opacity ?? 100}%</span>
+                        </div>
+
+                        {/* Volume */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Volume</label>
+                          <input type="range" min={0} max={200} step={5} value={selCopy.volume ?? 100}
+                            onChange={e => update({ volume: Number(e.target.value) })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{selCopy.volume ?? 100}%</span>
+                        </div>
+
+                        {/* Velocidade */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Velocidade</label>
+                          <input type="range" min={25} max={400} step={25} value={Math.round((selCopy.speed ?? 1) * 100)}
+                            onChange={e => update({ speed: Number(e.target.value) / 100 })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{Math.round((selCopy.speed ?? 1) * 100)}%</span>
+                        </div>
+
+                        {/* Brilho */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Brilho</label>
+                          <input type="range" min={0} max={200} step={5} value={selCopy.brightness ?? 100}
+                            onChange={e => update({ brightness: Number(e.target.value) })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{selCopy.brightness ?? 100}%</span>
+                        </div>
+
+                        <div className="border-t border-border/40 my-0.5" />
+                        <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Posição / Tela dividida</p>
+
+                        {/* Escala */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Escala</label>
+                          <input type="range" min={10} max={200} step={5} value={selCopy.scale ?? 100}
+                            onChange={e => update({ scale: Number(e.target.value) })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{selCopy.scale ?? 100}%</span>
+                        </div>
+
+                        {/* Pos X */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Pos X</label>
+                          <input type="range" min={-100} max={100} step={1} value={selCopy.posX ?? 0}
+                            onChange={e => update({ posX: Number(e.target.value) })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{selCopy.posX ?? 0}%</span>
+                        </div>
+
+                        {/* Pos Y */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Pos Y</label>
+                          <input type="range" min={-100} max={100} step={1} value={selCopy.posY ?? 0}
+                            onChange={e => update({ posY: Number(e.target.value) })}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] tabular-nums w-7">{selCopy.posY ?? 0}%</span>
+                        </div>
+
+                        {/* Atalhos tela dividida */}
+                        <div className="flex gap-1.5 flex-wrap">
+                          <button type="button" onClick={() => update({ posX: -50, scale: 50 })}
+                            className="rounded border border-border px-2 py-0.5 text-[8px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition">
+                            ◧ Esquerda
+                          </button>
+                          <button type="button" onClick={() => update({ posX: 50, scale: 50 })}
+                            className="rounded border border-border px-2 py-0.5 text-[8px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition">
+                            ◨ Direita
+                          </button>
+                          <button type="button" onClick={() => update({ posX: 0, posY: 0, scale: 100 })}
+                            className="rounded border border-border px-2 py-0.5 text-[8px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition">
+                            ⛶ Cheio
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {activeTool === "ai" ? (
                     <CleanCutPanel
                       assets={assets}
@@ -1264,6 +1367,8 @@ export function App() {
               onSetVisualCopies={setVisualCopies}
               selectedAssetId={selectedAssetId}
               onSelectAsset={setSelectedAssetId}
+              selectedCopyId={selectedCopyId}
+              onSelectCopy={setSelectedCopyId}
               currentTime={currentTime}
               onExtractAudioFromClip={handleExtractAudioFromClip}
               onSeek={(t) => {

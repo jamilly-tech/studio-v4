@@ -22,15 +22,22 @@ interface TimelineProps {
   onSeek: (time: number) => void;
   onDropAsset?: (assetId: string, atTime: number) => void;
   onExtractAudioFromClip?: (assetId: string, startTime: number) => void;
+  selectedCopyId?: string | null;
+  onSelectCopy?: (id: string | null) => void;
 }
 
 export function Timeline({
   assets, visualCopies, onSetVisualCopies,
   selectedAssetId, onSelectAsset, currentTime, onSeek, onDropAsset,
-  onExtractAudioFromClip,
+  onExtractAudioFromClip, selectedCopyId: selectedCopyIdProp, onSelectCopy,
 }: TimelineProps) {
   const [zoom, setZoom] = useState(1);
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedClipIdLocal, setSelectedClipIdLocal] = useState<string | null>(null);
+  const selectedClipId = selectedCopyIdProp !== undefined ? selectedCopyIdProp : selectedClipIdLocal;
+  const setSelectedClipId = (id: string | null) => {
+    setSelectedClipIdLocal(id);
+    onSelectCopy?.(id);
+  };
   const [dragState, setDragState] = useState<{ id: string; startX: number; origTime: number } | null>(null);
   const [trimState, setTrimState] = useState<{
     id: string; side: "left" | "right"; startX: number;
