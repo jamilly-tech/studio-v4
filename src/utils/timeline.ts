@@ -64,6 +64,7 @@ export function createTimelineCopyForAsset(
   asset: ImportedAsset,
   startTime: number,
   tag: TimelineVisualCopy["analysisTag"] = "manual",
+  trackIndex = 0,
 ): TimelineVisualCopy {
   const duration = getAssetDurationSeconds(asset) || defaultTimelineClipSeconds;
   return {
@@ -73,7 +74,7 @@ export function createTimelineCopyForAsset(
     duration,
     trimStart: 0,
     trimEnd: duration,
-    trackIndex: 0,
+    trackIndex,
     widthPx: Math.round(duration * timelinePixelsPerSecond),
     analysisTag: tag,
   };

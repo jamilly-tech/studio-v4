@@ -29,7 +29,8 @@ export type ToolId =
   | "adjust"
   | "templates"
   | "ai"
-  | "restore";
+  | "restore"
+  | "settings";
 
 export type FormatPreset = {
   id: string;

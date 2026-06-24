@@ -430,17 +430,26 @@ ipcMain.handle("media:separate-stems", async (_event, filePath) => {
 
   sendProgress("media:progress", { filePath, stage: "stems", percent: 5 });
 
-  const args = ["-m", "demucs", "--two-stems=vocals", "-o", outputDir, filePath];
+  // Pre-converte para WAV 44100Hz para evitar dependência do TorchCodec no Demucs
+  const wavInput = path.join(outputDir, "input.wav");
+  const wavConvert = await runProcess(ffmpegPath, [
+    "-y", "-i", filePath, "-vn", "-ar", "44100", "-ac", "2", "-acodec", "pcm_s16le", wavInput
+  ]);
+  if (wavConvert.code !== 0 || !fs.existsSync(wavInput)) {
+    return { error: "Falha ao converter audio para WAV antes do Demucs" };
+  }
+
+  sendProgress("media:progress", { filePath, stage: "stems", percent: 15 });
+
+  const args = ["-m", "demucs", "--two-stems=vocals", "-o", outputDir, wavInput];
   const { code, stderr } = await runProcess(pythonCmd, args);
 
   if (code !== 0) {
     return { error: `Demucs falhou: ${stderr.slice(-300)}` };
   }
 
-  // Demucs outputs to: outputDir/htdemucs/<original_basename>/vocals.wav + no_vocals.wav
-  // Usa nome original (sem extensão, sem sanitização) pois é o que o Demucs gera
-  const originalBaseName = path.basename(filePath, path.extname(filePath));
-  const modelDir = path.join(outputDir, "htdemucs", originalBaseName);
+  // Demucs outputs to: outputDir/htdemucs/input/vocals.wav + no_vocals.wav
+  const modelDir = path.join(outputDir, "htdemucs", "input");
   const vocalsPath = path.join(modelDir, "vocals.wav");
   const instrumentalsPath = path.join(modelDir, "no_vocals.wav");
 

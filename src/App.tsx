@@ -28,7 +28,7 @@ import type { MediaProgressEvent } from "@/types/electron";
 import {
   Film, Upload, Plus, Play, Pause, SkipBack, SkipForward,
   Volume2, VolumeX, Music2, ImageIcon, Type, Scissors,
-  Wand2, Captions, SlidersHorizontal, Cloud, Layers,
+  Wand2, Captions, SlidersHorizontal, Cloud, Layers, Settings,
   Smartphone, Monitor, Square, RectangleHorizontal, Circle,
   Move, Crop, Eraser, PenTool, ChevronDown, SplitSquareVertical, Stamp,
 } from "lucide-react";
@@ -71,6 +71,7 @@ const sidebarTools: { id: ToolId; label: string; icon: typeof Film }[] = [
   { id: "captions", label: "Legendas", icon: Captions },
   { id: "effects", label: "Efeitos", icon: Wand2 },
   { id: "ai", label: "Corte", icon: Scissors },
+  { id: "settings", label: "Config", icon: Settings },
 ];
 
 export function App() {
@@ -109,6 +110,8 @@ export function App() {
   const [captionBgOpacity, setCaptionBgOpacity] = useState(80);
   const [captionShadow, setCaptionShadow] = useState(false);
   const [captionOutline, setCaptionOutline] = useState(false);
+  const [groqKeyInput, setGroqKeyInput] = useState("");
+  const [groqKeySaved, setGroqKeySaved] = useState(false);
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wmRemoving, setWmRemoving] = useState(false);
   const [wmProgress, setWmProgress] = useState(0);
@@ -398,11 +401,14 @@ export function App() {
     setVisualCopies((prev) => [...prev, copy]);
   }, [visualCopies, setVisualCopies]);
 
-  const handleAddAudioToTimeline = useCallback(async (path: string) => {
-    await ingestFiles([path]);
-    const asset = useAssetsStore.getState().assets.find((a) => a.filePath === path || a.url === path);
-    if (asset) addToTimeline(asset);
-  }, [ingestFiles, addToTimeline]);
+  const handleAddAudioToTimeline = useCallback(async (audioPath: string) => {
+    await ingestFiles([audioPath]);
+    const asset = useAssetsStore.getState().assets.find((a) => a.filePath === audioPath || a.url === audioPath);
+    if (!asset) return;
+    // Áudio extraído vai sempre para track 1 (abaixo do vídeo), começando no tempo 0
+    const copy = createTimelineCopyForAsset(asset, 0, "manual", 1);
+    setVisualCopies((prev) => [...prev, copy]);
+  }, [ingestFiles, setVisualCopies]);
 
   const handleExtractAudioFromClip = useCallback(async (assetId: string, startTime: number) => {
     const asset = useAssetsStore.getState().assets.find((a) => a.id === assetId);
@@ -1164,6 +1170,41 @@ export function App() {
                       >
                         Ir para Legendas
                       </button>
+                    </div>
+                  ) : activeTool === "settings" ? (
+                    <div className="flex flex-col gap-3">
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Chave da API de Transcrição</p>
+                      <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2">
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Necessária para extrair legendas automaticamente. Obtenha em <span className="text-primary">console.groq.com</span> (grátis).
+                        </p>
+                        <input
+                          type="password"
+                          placeholder="gsk_..."
+                          value={groqKeyInput}
+                          onChange={(e) => { setGroqKeyInput(e.target.value); setGroqKeySaved(false); }}
+                          className="rounded border border-border bg-background px-2 py-1.5 text-[10px] text-foreground font-mono placeholder:text-muted-foreground/40 w-full"
+                        />
+                        <button
+                          type="button"
+                          disabled={!groqKeyInput.trim()}
+                          onClick={async () => {
+                            const cfg = (await window.studioV4?.readConfig?.()) || {};
+                            await window.studioV4?.writeConfig?.({ ...cfg, groqApiKey: groqKeyInput.trim() });
+                            setGroqKeySaved(true);
+                          }}
+                          className="rounded bg-primary px-3 py-1.5 text-[10px] font-bold text-white hover:bg-primary/90 transition disabled:opacity-40"
+                        >
+                          {groqKeySaved ? "Salvo!" : "Salvar chave"}
+                        </button>
+                      </div>
+                      <div className="border-t border-border/40 my-0.5" />
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Tela dividida</p>
+                      <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2">
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">
+                          Para colocar dois vídeos lado a lado: adicione ambos na timeline em tracks diferentes (o segundo clip vai para o track abaixo). No futuro export, os tracks são compostos em camadas. Para split-screen manual, coloque os dois clipes no mesmo intervalo de tempo em tracks 0 e 1.
+                        </p>
+                      </div>
                     </div>
                   ) : activeTool === "audio" ? (
                     <AudioToolsPanel asset={previewAsset} onAddAudioToTimeline={handleAddAudioToTimeline} />
