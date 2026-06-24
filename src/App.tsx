@@ -196,6 +196,8 @@ export function App() {
     captionStyle: {
       fontFamily: captionFont,
       fontSize: captionFontSize,
+      bold: captionBold,
+      italic: captionItalic,
       color: captionColor,
       bgColor: captionBgColor,
       bgOpacity: captionBgOpacity,
@@ -203,7 +205,7 @@ export function App() {
       outline: captionOutline,
       captionY,
     },
-  }), [projectName, assets, visualCopies, captionSegments, captionFont, captionFontSize, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY]);
+  }), [projectName, assets, visualCopies, captionSegments, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY]);
 
   // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
   const activeMediaContext = useMemo(() => {
@@ -239,6 +241,8 @@ export function App() {
       if (cs.color) setCaptionColor(cs.color as string);
       if (cs.bgColor) setCaptionBgColor(cs.bgColor as string);
       if (cs.bgOpacity !== undefined) setCaptionBgOpacity(cs.bgOpacity as number);
+      if (cs.bold !== undefined) setCaptionBold(cs.bold as boolean);
+      if (cs.italic !== undefined) setCaptionItalic(cs.italic as boolean);
       if (cs.shadow !== undefined) setCaptionShadow(cs.shadow as boolean);
       if (cs.outline !== undefined) setCaptionOutline(cs.outline as boolean);
       if (cs.captionY !== undefined) setCaptionY(cs.captionY as number);
@@ -1501,6 +1505,7 @@ export function App() {
                   captionsASS: captionSegments.length > 0
                     ? serializeCaptionsToASS(captionSegments, {
                         fontFamily: captionFont, fontSize: captionFontSize,
+                        bold: captionBold, italic: captionItalic,
                         color: captionColor, bgColor: captionBgColor, bgOpacity: captionBgOpacity,
                         shadow: captionShadow, outline: captionOutline, captionY,
                         playResX: exportResolution === "1080p" ? 1920 : 1280,

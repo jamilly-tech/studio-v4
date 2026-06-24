@@ -153,6 +153,8 @@ export function serializeCaptionsToSRT(segs: CaptionSegment[]): string {
 export interface CaptionStyleForExport {
   fontFamily?: string;
   fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
   color?: string;
   bgColor?: string;
   bgOpacity?: number;
@@ -185,6 +187,8 @@ export function serializeCaptionsToASS(segs: CaptionSegment[], style?: CaptionSt
   const resY = style?.playResY ?? 1080;
   const fontName = (style?.fontFamily ?? "Arial").replace(/,/g, "");
   const fontSize = Math.round(style?.fontSize ?? 24);
+  const bold = style?.bold ? -1 : 0;
+  const italic = style?.italic ? -1 : 0;
   const primary = hexToASS(style?.color ?? "#ffffff", 0);
   const bgAlpha = style?.bgOpacity !== undefined
     ? Math.round((1 - style.bgOpacity / 100) * 255)
@@ -205,7 +209,7 @@ export function serializeCaptionsToASS(segs: CaptionSegment[], style?: CaptionSt
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Default,${fontName},${fontSize},${primary},&H000000FF,&H00000000,${back},0,0,0,0,100,100,0,0,1,${outline},${shadow},2,10,10,${marginV},1`,
+    `Style: Default,${fontName},${fontSize},${primary},&H000000FF,&H00000000,${back},${bold},${italic},0,0,100,100,0,0,1,${outline},${shadow},2,10,10,${marginV},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

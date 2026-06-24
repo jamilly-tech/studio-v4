@@ -764,7 +764,7 @@ ipcMain.handle("media:ingest", async (_event, filePath) => {
       codec: videoStream.codec_name,
       width: videoStream.width,
       height: videoStream.height,
-      fps: Math.round(eval(videoStream.r_frame_rate || "0") * 100) / 100,
+      fps: Math.round((([n, d]) => d ? parseFloat(n) / parseFloat(d) : parseFloat(n) || 0)((videoStream.r_frame_rate || "0").split("/")) * 100) / 100,
       bitrate: parseInt(videoStream.bit_rate || "0", 10),
     } : null,
     audio: audioStream ? {
