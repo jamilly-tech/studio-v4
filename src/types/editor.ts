@@ -169,7 +169,16 @@ export type TimelineSlot = {
   repetitionScanDone: boolean;
 };
 
-export type TranscriptSegment = { start: number; end: number; text: string };
+export type CaptionSegment = {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  originalText?: string;
+  confidence?: number;
+  language?: string;
+};
+export type TranscriptSegment = CaptionSegment;
 
 export type DetectedRepetition = {
   id: string;

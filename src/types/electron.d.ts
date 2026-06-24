@@ -75,7 +75,7 @@ declare global {
         extractWav: (filePath: string) => Promise<{ path?: string; error?: string }>;
         separateStems: (filePath: string) => Promise<{ vocalsPath?: string; vocalsUrl?: string; instrumentalsPath?: string; instrumentalsUrl?: string; error?: string }>;
         thumbnailStrip: (filePath: string, opts?: { count?: number; width?: number; height?: number }) => Promise<{ thumbnails: string[]; duration: number }>;
-        transcribe: (filePath: string, language?: string) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
+        transcribe: (filePath: string, language?: string, trimStart?: number, trimDuration?: number) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
         removeWatermark: (filePath: string, region: { x: number; y: number; w: number; h: number }) => Promise<{ outputPath: string; proxyUrl: string }>;
         onProgress: (cb: (data: MediaProgressEvent) => void) => () => void;
         registerProxy: (filePath: string) => Promise<{ url?: string; error?: string }>;
@@ -97,7 +97,10 @@ declare global {
       saveProjectFile: (payload: { snapshot: unknown; defaultName: string }) => Promise<string | null>;
       openProjectFile: () => Promise<unknown | null>;
 
-      exportVideo: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; resolution: string }) => Promise<{ outputPath: string }>;
+      exportVideo: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; resolution: string; captionsSRT?: string; captionStyle?: Record<string, unknown> }) => Promise<{ outputPath: string }>;
+      exportAudio: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; format: string }) => Promise<{ outputPath: string }>;
+      exportGif: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; resolution: string }) => Promise<{ outputPath: string }>;
+      savePortableV4: (payload: { snapshot: unknown; defaultName: string }) => Promise<unknown>;
       onExportProgress: (cb: (data: { percent: number; outputPath: string }) => void) => () => void;
     };
   }

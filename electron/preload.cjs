@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld("studioV4", {
     extractWav: (filePath) => ipcRenderer.invoke("media:extract-wav", filePath),
     separateStems: (filePath) => ipcRenderer.invoke("media:separate-stems", filePath),
     thumbnailStrip: (filePath, opts) => ipcRenderer.invoke("media:thumbnail-strip", filePath, opts),
-    transcribe: (filePath, language) => ipcRenderer.invoke("media:transcribe", filePath, language),
+    transcribe: (filePath, language, trimStart, trimDuration) => ipcRenderer.invoke("media:transcribe", filePath, language, trimStart, trimDuration),
     saveAudio: (srcPath, defaultName) => ipcRenderer.invoke("media:save-audio", srcPath, defaultName),
     detectSilence: (filePath, opts) => ipcRenderer.invoke("media:detect-silence", filePath, opts),
     removeWatermark: (filePath, region) => ipcRenderer.invoke("media:remove-watermark", filePath, region),

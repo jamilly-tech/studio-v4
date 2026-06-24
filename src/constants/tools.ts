@@ -1,6 +1,6 @@
 import {
   ArrowLeftRight, AudioLines, Bot, Captions, Film, Layers,
-  LayoutTemplate, Music2, Palette, SlidersHorizontal,
+  LayoutTemplate, Music2, Palette, Settings, SlidersHorizontal,
   Sparkles, Sticker, Text, Wand2,
 } from "lucide-react";
 import type { ToolId } from "@/types/editor";
@@ -19,6 +19,7 @@ export const toolMap: Record<ToolId, { label: string; icon: typeof Film }> = {
   templates: { label: "Modelos", icon: LayoutTemplate },
   ai: { label: "IA", icon: Bot },
   restore: { label: "Restaurar", icon: Wand2 },
+  settings: { label: "Config", icon: Settings },
 };
 
 export const toolDescriptions: Record<ToolId, string> = {
@@ -35,6 +36,7 @@ export const toolDescriptions: Record<ToolId, string> = {
   templates: "Usa estruturas prontas para shorts, aulas e depoimentos.",
   ai: "Sugere acoes de IA para acelerar repeticoes, cortes e melhores cenas.",
   restore: "Remove ruido e falhas de camera regenerativamente via filtro bilateral WebGL.",
+  settings: "Configura transcricao local, modelos e preferencias do app.",
 };
 
 export const attachedTools: ToolId[] = [

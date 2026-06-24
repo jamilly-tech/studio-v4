@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useAssetsStore } from "@/stores/assets.store";
 import { useTimelineStore } from "@/stores/timeline.store";
@@ -10,18 +10,19 @@ import { Timeline } from "@/components/editor/Timeline";
 import { CleanCutPanel } from "@/components/editor/CleanCutPanel";
 import { AudioToolsPanel } from "@/components/editor/AudioToolsPanel";
 import { DrivePanel } from "@/components/editor/DrivePanel";
-import { TranscriptionPanel } from "@/components/editor/TranscriptionPanel";
+import { CaptionEditorPanel } from "@/components/editor/CaptionEditorPanel";
 import { PresetsPanel } from "@/components/editor/PresetsPanel";
 import { EffectsPanel } from "@/components/editor/EffectsPanel";
 import { formatFileSize } from "@/utils/format";
 import { createLocalId } from "@/utils/id";
+import { serializeCaptionsToSRT } from "@/utils/captions";
 import { createTimelineCopyForAsset, minimumTimelineClipSeconds, timelinePixelsPerSecond } from "@/utils/timeline";
 import { resolveAtTime, getTimelineDuration, sourceTimeToTimeline } from "@/utils/playback";
 import type { CleanCutPause } from "@/utils/audio";
 import type {
-  AppScreen, DialogId, FormatPreset, GoogleDriveProfile,
+  AppScreen, CaptionSegment, DialogId, FormatPreset, GoogleDriveProfile,
   ImportedAsset, PreviewQualityId, RecentVideoProject,
-  ThemeMode, ToolId, TranscriptSegment, TimelineVisualCopy,
+  ThemeMode, ToolId, TimelineVisualCopy,
 } from "@/types/editor";
 import type { MenuCommand } from "@/components/editor/MenuColumn";
 import type { MediaProgressEvent } from "@/types/electron";
@@ -90,7 +91,7 @@ export function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [dropHighlight, setDropHighlight] = useState(false);
-  const [captionSegments, setCaptionSegments] = useState<TranscriptSegment[]>([]);
+  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>([]);
   const [activeEffect, setActiveEffect] = useState<string | null>(null);
   const [activeEffectCss, setActiveEffectCss] = useState<string>("none");
   const [formatOpen, setFormatOpen] = useState(false);
@@ -111,8 +112,7 @@ export function App() {
   const [captionShadow, setCaptionShadow] = useState(false);
   const [captionOutline, setCaptionOutline] = useState(false);
   const [selectedCopyId, setSelectedCopyId] = useState<string | null>(null);
-  const [groqKeyInput, setGroqKeyInput] = useState("");
-  const [groqKeySaved, setGroqKeySaved] = useState(false);
+  const [whisperModel, setWhisperModel] = useState("small");
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wmRemoving, setWmRemoving] = useState(false);
   const [wmProgress, setWmProgress] = useState(0);
@@ -195,11 +195,33 @@ export function App() {
     captionSegments,
   }), [projectName, assets, visualCopies, captionSegments]);
 
+  // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
+  const activeMediaContext = useMemo(() => {
+    const copy = selectedCopyId ? visualCopies.find(c => c.id === selectedCopyId) : null;
+    const asset = copy
+      ? assets.find(a => a.id === copy.assetId)
+      : selectedAssetId ? assets.find(a => a.id === selectedAssetId) : null;
+    if (!asset?.filePath) return null;
+    if (asset.kind !== "video" && asset.kind !== "audio") return null;
+    const trimStart = copy?.trimStart ?? 0;
+    const trimEnd = copy?.trimEnd ?? (asset.metadata?.durationSeconds ?? 0);
+    return {
+      filePath: asset.filePath,
+      trimStart,
+      duration: Math.max(0.1, trimEnd - trimStart),
+    };
+  }, [selectedCopyId, selectedAssetId, visualCopies, assets]);
+
   const handleLoadProject = useCallback(async (snapshot: unknown) => {
     const data = snapshot as any;
     if (data.projectName) setProjectName(data.projectName);
     if (data.visualCopies) setVisualCopies(data.visualCopies);
-    if (data.captionSegments) setCaptionSegments(data.captionSegments);
+    if (data.captionSegments) setCaptionSegments(
+      (data.captionSegments as CaptionSegment[]).map(s => ({
+        ...s,
+        id: s.id || createLocalId("cap"),
+      }))
+    );
 
     if (data.assets && Array.isArray(data.assets)) {
       // Re-registra caminhos no proxy do servidor local e reconstrói URLs
@@ -1238,12 +1260,12 @@ export function App() {
                         <span className="text-[9px] text-muted-foreground w-7 tabular-nums">{Math.round(captionY)}%</span>
                       </div>
                     </div>
-                    <TranscriptionPanel
-                      assets={assets}
-                      selectedAssetId={selectedAssetId}
+                    <CaptionEditorPanel
+                      segments={captionSegments}
+                      onSegmentsChange={setCaptionSegments}
                       onSeek={(t) => { setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
-                      onCaptionsGenerated={setCaptionSegments}
-                      onApplyCuts={handleApplyCuts}
+                      currentTime={currentTime}
+                      mediaContext={activeMediaContext}
                     />
                     </>
                   ) : activeTool === "presets" ? (
@@ -1276,30 +1298,29 @@ export function App() {
                     </div>
                   ) : activeTool === "settings" ? (
                     <div className="flex flex-col gap-3">
-                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Chave da API de Transcrição</p>
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Transcrição (faster-whisper)</p>
                       <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2">
                         <p className="text-[10px] text-muted-foreground leading-relaxed">
-                          Necessária para extrair legendas automaticamente. Obtenha em <span className="text-primary">console.groq.com</span> (grátis).
+                          Transcrição local, offline, sem API. Requer Python + faster-whisper instalados.
                         </p>
-                        <input
-                          type="password"
-                          placeholder="gsk_..."
-                          value={groqKeyInput}
-                          onChange={(e) => { setGroqKeyInput(e.target.value); setGroqKeySaved(false); }}
-                          className="rounded border border-border bg-background px-2 py-1.5 text-[10px] text-foreground font-mono placeholder:text-muted-foreground/40 w-full"
-                        />
-                        <button
-                          type="button"
-                          disabled={!groqKeyInput.trim()}
-                          onClick={async () => {
+                        <label className="text-[9px] text-muted-foreground font-semibold">Modelo padrão</label>
+                        <select
+                          value={whisperModel}
+                          onChange={async (e) => {
+                            const m = e.target.value;
+                            setWhisperModel(m);
                             const cfg = (await window.studioV4?.readConfig?.()) || {};
-                            await window.studioV4?.writeConfig?.({ ...cfg, groqApiKey: groqKeyInput.trim() });
-                            setGroqKeySaved(true);
+                            await window.studioV4?.writeConfig?.({ ...cfg, whisperModel: m });
                           }}
-                          className="rounded bg-primary px-3 py-1.5 text-[10px] font-bold text-white hover:bg-primary/90 transition disabled:opacity-40"
+                          className="rounded border border-border bg-background px-2 py-1.5 text-[10px] text-foreground w-full"
                         >
-                          {groqKeySaved ? "Salvo!" : "Salvar chave"}
-                        </button>
+                          <option value="small">Rápido — small (~150 MB)</option>
+                          <option value="medium">Equilibrado — medium (~450 MB)</option>
+                          <option value="large-v3">Qualidade — large-v3 (~1.5 GB)</option>
+                        </select>
+                        <div className="rounded border border-border/40 bg-muted/20 px-2 py-1.5 text-[9px] text-muted-foreground leading-relaxed font-mono">
+                          pip install faster-whisper
+                        </div>
                       </div>
                       <div className="border-t border-border/40 my-0.5" />
                       <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Tela dividida</p>
@@ -1442,7 +1463,15 @@ export function App() {
                   filters: [{ name: `Vídeo ${ext.toUpperCase()}`, extensions: [ext] }],
                 });
                 if (!outputPath) { setExportProgress(null); return; }
-                await window.studioV4?.exportVideo?.({ clips, outputPath, resolution: exportResolution });
+                await window.studioV4?.exportVideo?.({
+                  clips, outputPath, resolution: exportResolution,
+                  captionsSRT: captionSegments.length > 0 ? serializeCaptionsToSRT(captionSegments) : undefined,
+                  captionStyle: captionSegments.length > 0 ? {
+                    fontFamily: captionFont, fontSize: captionFontSize,
+                    color: captionColor, bgColor: captionBgColor, bgOpacity: captionBgOpacity,
+                    shadow: captionShadow, outline: captionOutline, captionY,
+                  } : undefined,
+                });
               }
             } catch (err) {
               setExportProgress(null);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Captions, Loader2, Play, Copy, Check, RepeatIcon, Trash2, X } from "lucide-react";
-import type { ImportedAsset, TranscriptSegment } from "@/types/editor";
+import type { ImportedAsset, CaptionSegment, TranscriptSegment } from "@/types/editor";
 import type { CleanCutPause } from "@/utils/audio";
 
 const LANGUAGES = [
@@ -22,7 +22,7 @@ interface TranscriptionPanelProps {
   assets: ImportedAsset[];
   selectedAssetId: string | null;
   onSeek: (time: number) => void;
-  onCaptionsGenerated: (segments: TranscriptSegment[]) => void;
+  onCaptionsGenerated: (segments: CaptionSegment[]) => void;
   onApplyCuts?: (assetId: string, cuts: CleanCutPause[], totalDuration: number) => void;
 }
 
@@ -38,7 +38,7 @@ function wordSimilarity(a: string, b: string): number {
   return intersection / union;
 }
 
-function findRepeatedGroups(segments: TranscriptSegment[]): RepeatGroup[] {
+function findRepeatedGroups(segments: CaptionSegment[]): RepeatGroup[] {
   const groups: RepeatGroup[] = [];
   const used = new Set<number>();
 
@@ -61,7 +61,7 @@ function findRepeatedGroups(segments: TranscriptSegment[]): RepeatGroup[] {
 export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptionsGenerated, onApplyCuts }: TranscriptionPanelProps) {
   const [language, setLanguage] = useState<LangId>("pt");
   const [transcribing, setTranscribing] = useState(false);
-  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const [segments, setSegments] = useState<CaptionSegment[]>([]);
   const [transcribedAssetId, setTranscribedAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -94,9 +94,13 @@ export function TranscriptionPanel({ assets, selectedAssetId, onSeek, onCaptions
         return;
       }
 
-      setSegments(result.segments);
+      const segs = (result.segments || []).map((s, i) => ({
+        ...s,
+        id: `cap-${Date.now()}-${i}`,
+      }));
+      setSegments(segs);
       setTranscribedAssetId(selectedAsset.id);
-      onCaptionsGenerated(result.segments);
+      onCaptionsGenerated(segs);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha na transcricao");
     } finally {

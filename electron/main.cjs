@@ -111,6 +111,13 @@ function sendProgress(channel, data) {
   }
 }
 
+function hexToLibass(hex) {
+  const r = parseInt((hex || "#ffffff").slice(1, 3), 16) || 255;
+  const g = parseInt((hex || "#ffffff").slice(3, 5), 16) || 255;
+  const b = parseInt((hex || "#ffffff").slice(5, 7), 16) || 255;
+  return `&H00${b.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${r.toString(16).padStart(2,"0")}`.toUpperCase();
+}
+
 function safeBaseName(filePath) {
   return path.basename(filePath, path.extname(filePath)).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
 }
@@ -498,96 +505,79 @@ ipcMain.handle("media:save-audio", async (_event, srcPath, defaultName) => {
   return { savedPath: destPath };
 });
 
-// ── 6c. Transcribe via Groq Whisper (chave no backend) ──────────────────────
+// ── 6c. Transcribe via faster-whisper (local, offline) ──────────────────────
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || (() => {
-  // Re-leitura direta caso loadEnv() tenha rodado antes de process.resourcesPath estar definido
-  try {
-    const envPath = path.join(process.resourcesPath || path.join(__dirname, ".."), ".env");
-    const lines = fs.readFileSync(envPath, "utf-8").split("\n");
-    for (const line of lines) {
-      const m = line.match(/^GROQ_API_KEY=(.+)$/);
-      if (m) return m[1].trim();
-    }
-  } catch {}
-  return "";
-})();
-
-const LANG_PROMPTS = {
-  pt: "Transcreva em portugues brasileiro com acentuacao correta, virgulas, pontos e pontuacao gramatical. Use letras maiusculas no inicio de frases.",
-  en: "Transcribe in English with proper punctuation, capitalization, and grammar.",
-  es: "Transcribe en espanol con acentuacion correcta, puntuacion y gramatica adecuada.",
-  auto: "Transcribe with proper punctuation and grammar.",
-};
-
-ipcMain.handle("media:transcribe", async (_event, filePath, language) => {
+ipcMain.handle("media:transcribe", async (_event, filePath, language, trimStart, trimDuration) => {
   const lang = language || "pt";
+  const tStart = typeof trimStart === "number" && trimStart > 0 ? trimStart : 0;
+  const tDuration = typeof trimDuration === "number" && trimDuration > 0 ? trimDuration : null;
 
-  // 1. Extrair WAV 16kHz mono
-  const baseName = safeBaseName(filePath);
-  const wavPath = path.join(projectTmpDir, `transcribe_${Date.now()}_${baseName}.wav`);
-  const extractArgs = ["-y", "-i", filePath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", wavPath];
-  const extractResult = await runProcess(ffmpegPath, extractArgs);
-  if (extractResult.code !== 0 || !fs.existsSync(wavPath)) {
-    return { segments: [], error: "Falha ao extrair audio" };
+  // 1. Verificar se Python + faster-whisper estão disponíveis
+  let pythonCmd = null;
+  for (const cmd of ["python", "python3", "py"]) {
+    const check = await runProcess(cmd, ["-c", "import faster_whisper; print('ok')"]);
+    if (check.code === 0 && check.stdout.includes("ok")) { pythonCmd = cmd; break; }
+  }
+  if (!pythonCmd) {
+    return {
+      segments: [],
+      error: "faster-whisper não encontrado.\n\nInstale com:\n  pip install faster-whisper\n\nPython precisa estar no PATH do sistema.",
+    };
   }
 
-  sendProgress("media:progress", { filePath, stage: "transcribe", percent: 30 });
+  // 2. Extrair WAV 16kHz mono (com trim opcional)
+  const baseName = safeBaseName(filePath);
+  const wavPath = path.join(projectTmpDir, `transcribe_${Date.now()}_${baseName}.wav`);
+  const ffArgs = ["-y"];
+  if (tStart > 0) ffArgs.push("-ss", String(tStart));
+  if (tDuration !== null) ffArgs.push("-t", String(tDuration));
+  ffArgs.push("-i", filePath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", wavPath);
 
-  // 2. Ler chave do config do usuario (se tiver) ou usar a default
-  let apiKey = GROQ_API_KEY;
+  const extractResult = await runProcess(ffmpegPath, ffArgs);
+  if (extractResult.code !== 0 || !fs.existsSync(wavPath)) {
+    return { segments: [], error: "Falha ao extrair áudio para transcrição" };
+  }
+
+  sendProgress("media:progress", { filePath, stage: "transcribe", percent: 15 });
+
+  // 3. Modelo configurado pelo usuário (padrão: small)
+  let model = "small";
   try {
     const cfg = JSON.parse(fs.readFileSync(configPath(), "utf-8"));
-    if (cfg.groqApiKey && cfg.groqApiKey.trim()) apiKey = cfg.groqApiKey.trim();
+    if (cfg.whisperModel) model = cfg.whisperModel;
   } catch {}
 
-  // 3. Enviar para Groq
+  // 4. Script Python escrito em temp e executado
+  const pyScript = [
+    "import sys, json",
+    "from faster_whisper import WhisperModel",
+    "model = WhisperModel(sys.argv[1], device='cpu', compute_type='int8')",
+    "segs, info = model.transcribe(",
+    "    sys.argv[2],",
+    "    language=None if sys.argv[3]=='auto' else sys.argv[3],",
+    "    vad_filter=True,",
+    "    vad_parameters={'min_silence_duration_ms': 300}",
+    ")",
+    "result = [{'start': round(s.start,3), 'end': round(s.end,3), 'text': s.text.strip()} for s in segs]",
+    "print(json.dumps({'segments': result, 'language': info.language}))",
+  ].join("\n");
+
+  const scriptPath = path.join(projectTmpDir, "sv4_whisper.py");
+  fs.writeFileSync(scriptPath, pyScript, "utf-8");
+
+  const { code, stdout, stderr } = await runProcess(pythonCmd, [scriptPath, model, wavPath, lang]);
+  try { fs.unlinkSync(wavPath); } catch {}
+
+  sendProgress("media:progress", { filePath, stage: "transcribe", percent: 100 });
+
+  if (code !== 0) {
+    return { segments: [], error: `Whisper falhou:\n${(stderr || "").slice(-400)}` };
+  }
+
   try {
-    const wavBuffer = fs.readFileSync(wavPath);
-    const boundary = `----FormBoundary${Date.now()}`;
-    const parts = [];
-
-    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\nContent-Type: audio/wav\r\n\r\n`);
-    parts.push(wavBuffer);
-    parts.push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo`);
-    parts.push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nverbose_json`);
-    parts.push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="timestamp_granularities[]"\r\n\r\nsegment`);
-    if (lang !== "auto") parts.push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${lang}`);
-    parts.push(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${LANG_PROMPTS[lang] || LANG_PROMPTS.auto}`);
-    parts.push(`\r\n--${boundary}--\r\n`);
-
-    const body = Buffer.concat(parts.map(p => typeof p === "string" ? Buffer.from(p) : p));
-
-    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": `multipart/form-data; boundary=${boundary}`,
-      },
-      body,
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      return { segments: [], error: errData.error?.message || `Groq API: ${res.status}` };
-    }
-
-    const data = await res.json();
-    const segments = (data.segments || []).map(s => ({
-      start: s.start,
-      end: s.end,
-      text: (s.text || "").trim(),
-    }));
-
-    if (segments.length === 0 && data.text) {
-      segments.push({ start: 0, end: 0, text: data.text });
-    }
-
-    sendProgress("media:progress", { filePath, stage: "transcribe", percent: 100 });
-    try { fs.unlinkSync(wavPath); } catch {}
-    return { segments, language: data.language || lang };
-  } catch (err) {
-    return { segments: [], error: err.message || "Falha na transcricao" };
+    return JSON.parse(stdout.trim());
+  } catch {
+    return { segments: [], error: "Erro ao interpretar resultado do Whisper" };
   }
 });
 
@@ -1401,7 +1391,7 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
 // EXPORT VIDEO
 // ══════════════════════════════════════════════════════════════════════════════
 
-ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution }) => {
+ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, captionsSRT, captionStyle }) => {
   const validClips = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
   if (validClips.length === 0) throw new Error("Nenhum clipe valido");
 
@@ -1424,8 +1414,34 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution })
   });
 
   const n = validClips.length;
-  const filterComplex = [...filterParts, `${concatParts.join("")}concat=n=${n}:v=1:a=1[outv][outa]`].join(";");
   const totalDuration = validClips.reduce((sum, c) => sum + (c.duration || 5), 0);
+
+  // Legendas: se fornecidas, queima no vídeo com subtitles filter
+  let filterComplex;
+  let srtTmpPath = null;
+  if (captionsSRT && captionsSRT.trim()) {
+    srtTmpPath = path.join(projectTmpDir, `captions_export_${Date.now()}.srt`);
+    fs.writeFileSync(srtTmpPath, captionsSRT, "utf-8");
+    // Caminho escapado para libass no Windows
+    const escapedSrt = srtTmpPath.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
+    const cs = captionStyle || {};
+    const fontSize = cs.fontSize || 24;
+    const color = hexToLibass(cs.color || "#ffffff");
+    const bgColor = hexToLibass(cs.bgColor || "#000000");
+    const bgAlpha = Math.round((1 - (cs.bgOpacity || 80) / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
+    const fontName = (cs.fontFamily || "Arial").replace(/'/g, "");
+    const shadow = cs.shadow ? 1 : 0;
+    const outline = cs.outline ? 1 : 0;
+    const marginV = Math.round(h * (1 - (cs.captionY || 80) / 100) * 0.1);
+    const style = `FontName=${fontName},FontSize=${fontSize},PrimaryColour=${color},BackColour=&H${bgAlpha}${bgColor.slice(2)},Shadow=${shadow},Outline=${outline},MarginV=${marginV},Alignment=2`;
+    filterComplex = [
+      ...filterParts,
+      `${concatParts.join("")}concat=n=${n}:v=1:a=1[concatv][outa]`,
+      `[concatv]subtitles='${escapedSrt}':force_style='${style}'[outv]`,
+    ].join(";");
+  } else {
+    filterComplex = [...filterParts, `${concatParts.join("")}concat=n=${n}:v=1:a=1[outv][outa]`].join(";");
+  }
 
   const args = [...inputs, "-filter_complex", filterComplex, "-map", "[outv]", "-map", "[outa]",
     "-c:v", "libx264", "-crf", "22", "-preset", "fast", "-c:a", "aac", "-b:a", "192k",
@@ -1448,6 +1464,7 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution })
     });
     proc.stderr.on("data", () => {});
     proc.on("close", (code) => {
+      if (srtTmpPath) { try { fs.unlinkSync(srtTmpPath); } catch {} }
       if (code === 0 && fs.existsSync(outputPath)) {
         sendProgress("export-progress", { percent: 100, outputPath });
         resolve({ outputPath });
