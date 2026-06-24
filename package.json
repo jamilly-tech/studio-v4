@@ -19,7 +19,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "adm-zip": "^0.5.17",
-    "archiver": "^8.0.0",
+    "archiver": "^6.0.2",
     "electron-updater": "^6.3.9",
     "zustand": "^5.0.14"
   },
