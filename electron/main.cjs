@@ -122,6 +122,17 @@ function safeBaseName(filePath) {
   return path.basename(filePath, path.extname(filePath)).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
 }
 
+// Gera filtro atempo encadeado para suportar 0.25x–4x (FFmpeg limita cada atempo a 0.5–2.0)
+function buildAtempoFilter(speed) {
+  if (Math.abs(speed - 1) < 0.001) return null;
+  const parts = [];
+  let s = speed;
+  while (s > 2.0 + 1e-9) { parts.push("atempo=2.0"); s /= 2.0; }
+  while (s < 0.5 - 1e-9) { parts.push("atempo=0.5"); s *= 2.0; }
+  parts.push(`atempo=${s.toFixed(4)}`);
+  return parts.join(",");
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MEDIA-INGEST: O coração da importação universal
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1071,7 +1082,10 @@ ipcMain.handle("google-auth", async () => {
     shell.openExternal(authUrl.toString());
 
     const timer = setTimeout(() => {
-      if (pendingOAuth) { pendingOAuth.reject(new Error("timeout")); pendingOAuth = null; }
+      if (pendingOAuth) {
+        pendingOAuth.reject(new Error("Login expirou. A janela do navegador ficou aberta por mais de 10 minutos sem autenticação. Feche-a e tente novamente."));
+        pendingOAuth = null;
+      }
     }, 600_000);
 
     const origResolve = resolve;
@@ -1293,8 +1307,9 @@ ipcMain.handle("export-audio", async (_event, { clips, outputPath, format }) => 
     const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
     inputs.push("-ss", String(clip.trimStart || 0), "-t", String((clip.duration || 5) / speed), "-i", clip.filePath);
     const aLabel = `[a${i}]`;
-    filterParts.push(speed !== 1
-      ? `[${i}:a]atempo=${Math.min(2, Math.max(0.5, speed)).toFixed(4)}${aLabel}`
+    const atempoChain = buildAtempoFilter(speed);
+    filterParts.push(atempoChain
+      ? `[${i}:a]${atempoChain}${aLabel}`
       : `[${i}:a]anull${aLabel}`);
     mixParts.push(aLabel);
   });
@@ -1428,9 +1443,8 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
     const vLabel = `[v${i}]`;
     const aLabel = `[a${i}]`;
     filterParts.push(`[${i}:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2${speed !== 1 ? `,setpts=${(1/speed).toFixed(4)}*PTS` : ""}${vLabel}`);
-    if (speed !== 1 && speed >= 0.5 && speed <= 2) filterParts.push(`[${i}:a]atempo=${speed.toFixed(4)}${aLabel}`);
-    else if (speed !== 1) filterParts.push(`[${i}:a]atempo=${Math.min(2, Math.max(0.5, speed)).toFixed(4)}${aLabel}`);
-    else filterParts.push(`[${i}:a]anull${aLabel}`);
+    const atempoChain = buildAtempoFilter(speed);
+    filterParts.push(atempoChain ? `[${i}:a]${atempoChain}${aLabel}` : `[${i}:a]anull${aLabel}`);
     concatParts.push(vLabel, aLabel);
   });
 

@@ -1320,7 +1320,8 @@ export function App() {
                             const m = e.target.value;
                             setWhisperModel(m);
                             const cfg = (await window.studioV4?.readConfig?.()) || {};
-                            await window.studioV4?.writeConfig?.({ ...cfg, whisperModel: m });
+                            const ok = await window.studioV4?.writeConfig?.({ ...cfg, whisperModel: m });
+                            if (ok === false) addToast("Falha ao salvar configuração", "error");
                           }}
                           className="rounded border border-border bg-background px-2 py-1.5 text-[10px] text-foreground w-full"
                         >
