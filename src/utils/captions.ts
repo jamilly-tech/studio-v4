@@ -148,6 +148,76 @@ export function serializeCaptionsToSRT(segs: CaptionSegment[]): string {
     .join("\n\n");
 }
 
+// ── Serialização ASS ──────────────────────────────────────────────────────────
+
+export interface CaptionStyleForExport {
+  fontFamily?: string;
+  fontSize?: number;
+  color?: string;
+  bgColor?: string;
+  bgOpacity?: number;
+  shadow?: boolean;
+  outline?: boolean;
+  captionY?: number;
+  playResX?: number;
+  playResY?: number;
+}
+
+function toASSTime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const cs = Math.round((sec % 1) * 100);
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+}
+
+function hexToASS(hex: string, alpha = 0): string {
+  const h = (hex || "#000000").replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16) || 0;
+  const g = parseInt(h.slice(2, 4), 16) || 0;
+  const b = parseInt(h.slice(4, 6), 16) || 0;
+  const a = Math.max(0, Math.min(255, alpha));
+  return `&H${a.toString(16).padStart(2, "0").toUpperCase()}${b.toString(16).padStart(2, "0").toUpperCase()}${g.toString(16).padStart(2, "0").toUpperCase()}${r.toString(16).padStart(2, "0").toUpperCase()}`;
+}
+
+export function serializeCaptionsToASS(segs: CaptionSegment[], style?: CaptionStyleForExport): string {
+  const resX = style?.playResX ?? 1920;
+  const resY = style?.playResY ?? 1080;
+  const fontName = (style?.fontFamily ?? "Arial").replace(/,/g, "");
+  const fontSize = Math.round(style?.fontSize ?? 24);
+  const primary = hexToASS(style?.color ?? "#ffffff", 0);
+  const bgAlpha = style?.bgOpacity !== undefined
+    ? Math.round((1 - style.bgOpacity / 100) * 255)
+    : 128;
+  const back = hexToASS(style?.bgColor ?? "#000000", bgAlpha);
+  const outline = style?.outline ? 1 : 0;
+  const shadow = style?.shadow ? 1 : 0;
+  const captionY = style?.captionY ?? 32;
+  const marginV = Math.round(resY * (captionY / 100) * 0.35);
+
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    `PlayResX: ${resX}`,
+    `PlayResY: ${resY}`,
+    "WrapStyle: 0",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Default,${fontName},${fontSize},${primary},&H000000FF,&H00000000,${back},0,0,0,0,100,100,0,0,1,${outline},${shadow},2,10,10,${marginV},1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ].join("\n");
+
+  const events = segs
+    .map(s => `Dialogue: 0,${toASSTime(s.start)},${toASSTime(s.end)},Default,,0,0,0,,${s.text.replace(/\n/g, "\\N")}`)
+    .join("\n");
+
+  return `${header}\n${events}\n`;
+}
+
 export function parseSRTToSegments(srt: string): CaptionSegment[] {
   const blocks = srt.trim().split(/\n\n+/);
   return blocks.flatMap(block => {

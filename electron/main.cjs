@@ -1175,7 +1175,12 @@ ipcMain.handle("save-project-file", async (_event, { snapshot, defaultName }) =>
   });
   if (result.canceled || !result.filePath) return null;
   const savePath = result.filePath.endsWith(".v4") ? result.filePath : result.filePath + ".v4";
-  fs.writeFileSync(savePath, JSON.stringify(snapshot, null, 2), "utf-8");
+  // Remove URLs localhost — serão regeneradas via registerProxy ao reabrir
+  const cleanSnapshot = {
+    ...snapshot,
+    assets: (snapshot.assets || []).map(a => ({ ...a, url: "", previewUrl: "", file: undefined })),
+  };
+  fs.writeFileSync(savePath, JSON.stringify(cleanSnapshot, null, 2), "utf-8");
   return savePath;
 });
 
@@ -1246,13 +1251,16 @@ ipcMain.handle("save-v4-portable", async (_event, { snapshot, defaultName }) => 
     pathMap.set(p, `media/${name}`);
   }
 
-  // Snapshot com paths relativos
+  // Snapshot com paths relativos e URLs localhost removidas (serão regeneradas ao abrir)
   const portableSnapshot = {
     ...snapshot,
     _portable: true,
     assets: (snapshot.assets || []).map(a => ({
       ...a,
       filePath: pathMap.get(a.filePath) ?? a.filePath,
+      url: "",
+      previewUrl: "",
+      file: undefined,
     })),
   };
 
@@ -1427,7 +1435,7 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
 // EXPORT VIDEO
 // ══════════════════════════════════════════════════════════════════════════════
 
-ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, captionsSRT, captionStyle }) => {
+ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, captionsASS }) => {
   const validClips = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
   if (validClips.length === 0) throw new Error("Nenhum clipe valido");
 
@@ -1451,28 +1459,18 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
   const n = validClips.length;
   const totalDuration = validClips.reduce((sum, c) => sum + (c.duration || 5), 0);
 
-  // Legendas: se fornecidas, queima no vídeo com subtitles filter
+  // Legendas ASS: mais confiável que SRT+force_style — estilo embutido no arquivo
   let filterComplex;
-  let srtTmpPath = null;
-  if (captionsSRT && captionsSRT.trim()) {
-    srtTmpPath = path.join(projectTmpDir, `captions_export_${Date.now()}.srt`);
-    fs.writeFileSync(srtTmpPath, captionsSRT, "utf-8");
-    // Caminho escapado para libass no Windows
-    const escapedSrt = srtTmpPath.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
-    const cs = captionStyle || {};
-    const fontSize = cs.fontSize || 24;
-    const color = hexToLibass(cs.color || "#ffffff");
-    const bgColor = hexToLibass(cs.bgColor || "#000000");
-    const bgAlpha = Math.round((1 - (cs.bgOpacity || 80) / 100) * 255).toString(16).padStart(2, "0").toUpperCase();
-    const fontName = (cs.fontFamily || "Arial").replace(/'/g, "");
-    const shadow = cs.shadow ? 1 : 0;
-    const outline = cs.outline ? 1 : 0;
-    const marginV = Math.round(h * (1 - (cs.captionY || 80) / 100) * 0.1);
-    const style = `FontName=${fontName},FontSize=${fontSize},PrimaryColour=${color},BackColour=&H${bgAlpha}${bgColor.slice(2)},Shadow=${shadow},Outline=${outline},MarginV=${marginV},Alignment=2`;
+  let assTmpPath = null;
+  if (captionsASS && captionsASS.trim()) {
+    assTmpPath = path.join(projectTmpDir, `captions_export_${Date.now()}.ass`);
+    fs.writeFileSync(assTmpPath, captionsASS, "utf-8");
+    // Caminho escapado para libass no Windows: backslash → slash, C: → C\:
+    const escapedAss = assTmpPath.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
     filterComplex = [
       ...filterParts,
       `${concatParts.join("")}concat=n=${n}:v=1:a=1[concatv][outa]`,
-      `[concatv]subtitles='${escapedSrt}':force_style='${style}'[outv]`,
+      `[concatv]ass='${escapedAss}'[outv]`,
     ].join(";");
   } else {
     filterComplex = [...filterParts, `${concatParts.join("")}concat=n=${n}:v=1:a=1[outv][outa]`].join(";");
@@ -1500,7 +1498,7 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
     let stderrBuf = "";
     proc.stderr.on("data", (d) => { stderrBuf += d.toString(); });
     proc.on("close", (code) => {
-      if (srtTmpPath) { try { fs.unlinkSync(srtTmpPath); } catch {} }
+      if (assTmpPath) { try { fs.unlinkSync(assTmpPath); } catch {} }
       if (code === 0 && fs.existsSync(outputPath)) {
         sendProgress("export-progress", { percent: 100, outputPath });
         resolve({ outputPath });

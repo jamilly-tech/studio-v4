@@ -15,7 +15,7 @@ import { PresetsPanel } from "@/components/editor/PresetsPanel";
 import { EffectsPanel } from "@/components/editor/EffectsPanel";
 import { formatFileSize } from "@/utils/format";
 import { createLocalId } from "@/utils/id";
-import { serializeCaptionsToSRT } from "@/utils/captions";
+import { serializeCaptionsToASS } from "@/utils/captions";
 import { createTimelineCopyForAsset, minimumTimelineClipSeconds, timelinePixelsPerSecond } from "@/utils/timeline";
 import { resolveAtTime, getTimelineDuration, sourceTimeToTimeline } from "@/utils/playback";
 import type { CleanCutPause } from "@/utils/audio";
@@ -1498,12 +1498,15 @@ export function App() {
                 if (!outputPath) { setExportProgress(null); return; }
                 await window.studioV4?.exportVideo?.({
                   clips, outputPath, resolution: exportResolution,
-                  captionsSRT: captionSegments.length > 0 ? serializeCaptionsToSRT(captionSegments) : undefined,
-                  captionStyle: captionSegments.length > 0 ? {
-                    fontFamily: captionFont, fontSize: captionFontSize,
-                    color: captionColor, bgColor: captionBgColor, bgOpacity: captionBgOpacity,
-                    shadow: captionShadow, outline: captionOutline, captionY,
-                  } : undefined,
+                  captionsASS: captionSegments.length > 0
+                    ? serializeCaptionsToASS(captionSegments, {
+                        fontFamily: captionFont, fontSize: captionFontSize,
+                        color: captionColor, bgColor: captionBgColor, bgOpacity: captionBgOpacity,
+                        shadow: captionShadow, outline: captionOutline, captionY,
+                        playResX: exportResolution === "1080p" ? 1920 : 1280,
+                        playResY: exportResolution === "1080p" ? 1080 : 720,
+                      })
+                    : undefined,
                 });
               }
             } catch (err) {
