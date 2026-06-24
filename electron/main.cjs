@@ -432,7 +432,7 @@ ipcMain.handle("media:separate-stems", async (_event, filePath) => {
     try { execSync(`${cmd} -c "import demucs"`, { stdio: "pipe" }); pythonCmd = cmd; break; } catch {}
   }
   if (!pythonCmd) {
-    return { error: "Demucs nao encontrado. Instale com: pip install demucs" };
+    return { error: "Demucs não encontrado.\n\nInstale com Python 3.10–3.12 (não 3.13+):\n  pip install demucs\n\nRequer PyTorch — instale antes se necessário:\n  pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu\n\nApós instalar, reinicie o Studio V4." };
   }
 
   sendProgress("media:progress", { filePath, stage: "stems", percent: 5 });
@@ -838,8 +838,12 @@ ipcMain.handle("media:ingest", async (_event, filePath) => {
             proxyPaths.add(proxyOut);
             const newUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(proxyOut)}`;
             sendProgress("media:progress", { filePath, stage: "proxy-done", percent: 100, proxyUrl: newUrl });
+          } else {
+            sendProgress("media:progress", { filePath, stage: "proxy-error", percent: 0, error: `Proxy falhou (FFmpeg código ${pr.code}). O arquivo original será usado.` });
           }
-        } catch {}
+        } catch (e) {
+          sendProgress("media:progress", { filePath, stage: "proxy-error", percent: 0, error: `Proxy falhou: ${e.message}` });
+        }
       });
     }
   } else if (kind === "audio") {
@@ -860,8 +864,12 @@ ipcMain.handle("media:ingest", async (_event, filePath) => {
             proxyPaths.add(convOut);
             const newUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(convOut)}`;
             sendProgress("media:progress", { filePath, stage: "proxy-done", percent: 100, proxyUrl: newUrl });
+          } else {
+            sendProgress("media:progress", { filePath, stage: "proxy-error", percent: 0, error: "Falha ao converter áudio. O arquivo original será usado diretamente." });
           }
-        } catch {}
+        } catch (e) {
+          sendProgress("media:progress", { filePath, stage: "proxy-error", percent: 0, error: `Conversão falhou: ${e.message}` });
+        }
       });
     }
   } else if (kind === "image") {
@@ -891,8 +899,14 @@ ipcMain.handle("media:ingest", async (_event, filePath) => {
           }
           const peakMax = Math.max(...peaks, 0.01);
           sendProgress("media:progress", { filePath, stage: "waveform-done", percent: 100, waveformPeaks: peaks.map(p => p / peakMax) });
+        } else {
+          // Sem dados de áudio — envia peaks vazio para UI saber que terminou
+          sendProgress("media:progress", { filePath, stage: "waveform-done", percent: 100, waveformPeaks: [] });
         }
-      } catch {}
+      } catch (e) {
+        // Waveform não é crítico — envia peaks vazio silenciosamente
+        sendProgress("media:progress", { filePath, stage: "waveform-done", percent: 100, waveformPeaks: [] });
+      }
     });
   }
 
@@ -1502,7 +1516,16 @@ async function createWindow() {
     },
   });
 
-  mainWindow.once("ready-to-show", () => { mainWindow.show(); mainWindow.focus(); });
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+    mainWindow.focus();
+    if (app.isPackaged && !fs.existsSync(ffmpegPath)) {
+      dialog.showErrorBox(
+        "FFmpeg não encontrado",
+        `FFmpeg não foi encontrado em:\n${ffmpegPath}\n\nO Studio V4 não conseguirá processar vídeos. Reinstale o aplicativo.`
+      );
+    }
+  });
   mainWindow.webContents.setWindowOpenHandler(({ url: u }) => { shell.openExternal(u); return { action: "deny" }; });
   mainWindow.webContents.on("render-process-gone", (_e, d) => { if (d.reason !== "clean-exit") mainWindow.reload(); });
 

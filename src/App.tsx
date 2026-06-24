@@ -86,7 +86,7 @@ export function App() {
   const [googleProfile, setGoogleProfile] = useState<GoogleDriveProfile | null>(null);
   const [driveConnected, setDriveConnected] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState<Record<string, { stage: string; percent: number }>>({});
+  const [importProgress, setImportProgress] = useState<Record<string, { stage: string; percent: number; error?: string }>>({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -257,10 +257,15 @@ export function App() {
   useEffect(() => {
     if (!window.studioV4?.media?.onProgress) return;
     return window.studioV4.media.onProgress((data: MediaProgressEvent) => {
-      setImportProgress((prev) => ({ ...prev, [data.filePath]: { stage: data.stage, percent: data.percent } }));
+      setImportProgress((prev) => ({ ...prev, [data.filePath]: { stage: data.stage, percent: data.percent, error: data.error } }));
       if (data.stage === "proxy-done" && data.proxyUrl) {
         const asset = useAssetsStore.getState().assets.find((a) => a.filePath === data.filePath);
         if (asset) useAssetsStore.getState().updateAsset(asset.id, { url: data.proxyUrl, previewUrl: data.proxyUrl });
+      }
+      if (data.stage === "proxy-error" && data.error) {
+        const asset = useAssetsStore.getState().assets.find((a) => a.filePath === data.filePath);
+        if (asset) useAssetsStore.getState().updateAsset(asset.id, { error: data.error });
+        addToast(data.error, "info");
       }
       if (data.stage === "waveform-done" && data.waveformPeaks) {
         const asset = useAssetsStore.getState().assets.find((a) => a.filePath === data.filePath);
@@ -599,13 +604,18 @@ export function App() {
                   {importing && (
                     <div className="mb-2 rounded-lg bg-primary/10 p-2.5 border border-primary/20">
                       <p className="text-[10px] font-bold text-primary">Importando...</p>
-                      {Object.entries(importProgress).map(([fp, { stage, percent }]) => (
+                      {Object.entries(importProgress).map(([fp, { stage, percent, error }]) => (
                         <div key={fp} className="mt-1.5">
                           <p className="truncate text-[9px] text-muted-foreground">{fp.split(/[/\\]/).pop()}</p>
                           <div className="mt-0.5 h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${percent}%` }} />
+                            <div className={`h-full rounded-full transition-all ${stage === "proxy-error" ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${percent > 0 ? percent : 100}%` }} />
                           </div>
-                          <p className="text-[8px] text-muted-foreground mt-0.5">{stageLabel(stage)} — {percent}%</p>
+                          <p className={`text-[8px] mt-0.5 ${stage === "proxy-error" ? "text-amber-400" : "text-muted-foreground"}`}>
+                            {stageLabel(stage)}{stage !== "proxy-error" ? ` — ${percent}%` : ""}
+                          </p>
+                          {error && stage === "proxy-error" && (
+                            <p className="text-[8px] text-amber-400/70 mt-0.5 leading-relaxed">{error}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1699,7 +1709,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function stageLabel(stage: string): string {
   const map: Record<string, string> = {
     probe: "Analisando", thumbnail: "Thumbnail", waveform: "Waveform",
-    proxy: "Criando proxy", "proxy-done": "Proxy pronto",
+    proxy: "Criando proxy", "proxy-done": "Proxy pronto", "proxy-error": "Falha no proxy",
     convert: "Convertendo", "convert-done": "Convertido",
     strip: "Timeline", transcribe: "Transcrevendo", done: "Pronto",
   };

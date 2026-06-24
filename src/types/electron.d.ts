@@ -54,10 +54,11 @@ export interface MediaIngestResult {
 
 export interface MediaProgressEvent {
   filePath: string;
-  stage: "probe" | "thumbnail" | "waveform" | "waveform-done" | "proxy" | "proxy-done" | "convert" | "convert-done" | "strip" | "transcribe" | "stems" | "stems-done" | "remove-watermark" | "done";
+  stage: "probe" | "thumbnail" | "waveform" | "waveform-done" | "proxy" | "proxy-done" | "proxy-error" | "convert" | "convert-done" | "strip" | "transcribe" | "stems" | "stems-done" | "remove-watermark" | "done";
   percent: number;
   proxyUrl?: string;
   waveformPeaks?: number[];
+  error?: string;
 }
 
 declare global {
