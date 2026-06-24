@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld("studioV4", {
 
   // ── Export ────────────────────────────────────────────────────────────────
   exportVideo: (payload) => ipcRenderer.invoke("export-video", payload),
+  exportAudio: (payload) => ipcRenderer.invoke("export-audio", payload),
+  exportGif: (payload) => ipcRenderer.invoke("export-gif", payload),
+  savePortableV4: (payload) => ipcRenderer.invoke("save-v4-portable", payload),
   onExportProgress: (cb) => {
     const handler = (_event, data) => cb(data);
     ipcRenderer.on("export-progress", handler);

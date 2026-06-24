@@ -27,6 +27,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn, execFile } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
+const archiver = require("archiver");
+const AdmZip = require("adm-zip");
 
 // ── Auto-Updater ────────────────────────────────────────────────────────────
 let autoUpdater;
@@ -1131,10 +1133,10 @@ ipcMain.handle("save-project-file", async (_event, { snapshot, defaultName }) =>
   const result = await dialog.showSaveDialog(mainWindow, {
     title: "Salvar projeto",
     defaultPath: defaultName || "projeto",
-    filters: [{ name: "Projeto Studio V4", extensions: ["sv4"] }],
+    filters: [{ name: "Studio V4 — Projeto", extensions: ["v4"] }],
   });
   if (result.canceled || !result.filePath) return null;
-  const savePath = result.filePath.endsWith(".sv4") ? result.filePath : result.filePath + ".sv4";
+  const savePath = result.filePath.endsWith(".v4") ? result.filePath : result.filePath + ".v4";
   fs.writeFileSync(savePath, JSON.stringify(snapshot, null, 2), "utf-8");
   return savePath;
 });
@@ -1143,11 +1145,236 @@ ipcMain.handle("open-project-file", async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Abrir projeto",
-    filters: [{ name: "Projeto Studio V4", extensions: ["sv4"] }],
+    filters: [{ name: "Studio V4 — Projeto", extensions: ["v4"] }],
     properties: ["openFile"],
   });
   if (result.canceled || !result.filePaths[0]) return null;
-  return JSON.parse(fs.readFileSync(result.filePaths[0], "utf-8"));
+  const filePath = result.filePaths[0];
+  const header = Buffer.alloc(4);
+  const fd = fs.openSync(filePath, "r");
+  fs.readSync(fd, header, 0, 4, 0);
+  fs.closeSync(fd);
+  // ZIP magic: PK\x03\x04
+  if (header[0] === 0x50 && header[1] === 0x4B) {
+    const zip = new AdmZip(filePath);
+    const tmpDir = path.join(os.tmpdir(), "studiov4", Date.now().toString());
+    fs.mkdirSync(tmpDir, { recursive: true });
+    zip.extractAllTo(tmpDir, true);
+    const snapshot = JSON.parse(zip.readAsText("project.json"));
+    snapshot.assets = (snapshot.assets || []).map(a => {
+      if (a.filePath && !path.isAbsolute(a.filePath)) {
+        return { ...a, filePath: path.join(tmpDir, a.filePath) };
+      }
+      return a;
+    });
+    return snapshot;
+  }
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SAVE V4 PORTABLE (ZIP com mídia embutida)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const COMPRESSED_EXTS = new Set([".mp4",".mov",".mkv",".avi",".webm",".m4v",".mp3",".aac",".m4a",".flac",".ogg",".opus",".hevc",".h264"]);
+
+ipcMain.handle("save-v4-portable", async (_event, { snapshot, defaultName }) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Exportar projeto portável",
+    defaultPath: defaultName || "projeto",
+    filters: [{ name: "Studio V4 — Portável", extensions: ["v4"] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  const outPath = result.filePath.endsWith(".v4") ? result.filePath : result.filePath + ".v4";
+
+  // Coletar arquivos únicos presentes no disco
+  const assetPaths = (snapshot.assets || [])
+    .map(a => a.filePath).filter(p => p && fs.existsSync(p));
+  const uniquePaths = [...new Set(assetPaths)];
+
+  // Mapear path original → nome no ZIP (desambiguando colisões de nome)
+  const pathMap = new Map();
+  const usedNames = new Set();
+  for (const p of uniquePaths) {
+    const ext = path.extname(p).toLowerCase();
+    const base = path.basename(p, ext);
+    let name = base + ext;
+    if (usedNames.has(name)) {
+      const hash = crypto.createHash("md5").update(p).digest("hex").slice(0, 6);
+      name = `${base}__${hash}${ext}`;
+    }
+    usedNames.add(name);
+    pathMap.set(p, `media/${name}`);
+  }
+
+  // Snapshot com paths relativos
+  const portableSnapshot = {
+    ...snapshot,
+    _portable: true,
+    assets: (snapshot.assets || []).map(a => ({
+      ...a,
+      filePath: pathMap.get(a.filePath) ?? a.filePath,
+    })),
+  };
+
+  const totalBytes = uniquePaths.reduce((s, p) => {
+    try { return s + fs.statSync(p).size; } catch { return s; }
+  }, 1024);
+
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(outPath);
+    const archive = archiver("zip", { zlib: { level: 6 } });
+
+    output.on("close", () => {
+      sendProgress("export-progress", { percent: 100, outputPath: outPath });
+      resolve({ outputPath: outPath });
+    });
+    archive.on("error", reject);
+    archive.pipe(output);
+
+    // JSON comprimido
+    archive.append(Buffer.from(JSON.stringify(portableSnapshot, null, 2), "utf-8"), {
+      name: "project.json", store: false,
+    });
+
+    // Mídia: vídeo/áudio já comprimidos → STORE; imagens → deflate
+    for (const [origPath, zipName] of pathMap.entries()) {
+      const ext = path.extname(origPath).toLowerCase();
+      archive.file(origPath, { name: zipName, store: COMPRESSED_EXTS.has(ext) });
+    }
+
+    archive.on("progress", ({ fs: fsInfo }) => {
+      const pct = Math.min(99, Math.round((fsInfo.processedBytes / totalBytes) * 100));
+      sendProgress("export-progress", { percent: pct });
+    });
+
+    archive.finalize();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EXPORT AUDIO (MP3 / WAV)
+// ══════════════════════════════════════════════════════════════════════════════
+
+ipcMain.handle("export-audio", async (_event, { clips, outputPath, format }) => {
+  const validClips = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
+  if (validClips.length === 0) throw new Error("Nenhum clipe valido");
+
+  const inputs = [];
+  const filterParts = [];
+  const mixParts = [];
+
+  validClips.forEach((clip, i) => {
+    const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
+    inputs.push("-ss", String(clip.trimStart || 0), "-t", String((clip.duration || 5) / speed), "-i", clip.filePath);
+    const aLabel = `[a${i}]`;
+    filterParts.push(speed !== 1
+      ? `[${i}:a]atempo=${Math.min(2, Math.max(0.5, speed)).toFixed(4)}${aLabel}`
+      : `[${i}:a]anull${aLabel}`);
+    mixParts.push(aLabel);
+  });
+
+  const n = validClips.length;
+  const filterComplex = [...filterParts, `${mixParts.join("")}concat=n=${n}:v=0:a=1[outa]`].join(";");
+  const totalDuration = validClips.reduce((s, c) => s + (c.duration || 5), 0);
+
+  const codecArgs = format === "wav"
+    ? ["-c:a", "pcm_s16le"]
+    : ["-c:a", "libmp3lame", "-b:a", "192k"];
+
+  const args = [...inputs, "-filter_complex", filterComplex, "-map", "[outa]",
+    ...codecArgs, "-progress", "pipe:1", "-nostats", "-y", outputPath];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, args, { windowsHide: true });
+    let buf = "";
+    proc.stdout.on("data", (chunk) => {
+      buf += chunk.toString();
+      const lines = buf.split("\n"); buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const m = line.match(/^out_time_ms=(\d+)/);
+        if (m) {
+          const pct = Math.min(99, Math.round((parseInt(m[1]) / 1_000_000 / totalDuration) * 100));
+          sendProgress("export-progress", { percent: pct, outputPath });
+        }
+      }
+    });
+    proc.stderr.on("data", () => {});
+    proc.on("close", (code) => {
+      if (code === 0 && fs.existsSync(outputPath)) {
+        sendProgress("export-progress", { percent: 100, outputPath });
+        resolve({ outputPath });
+      } else reject(new Error(`FFmpeg encerrou com codigo ${code}`));
+    });
+    proc.on("error", reject);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// EXPORT GIF (palette method — qualidade máxima)
+// ══════════════════════════════════════════════════════════════════════════════
+
+ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) => {
+  const validClips = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
+  if (validClips.length === 0) throw new Error("Nenhum clipe valido");
+
+  const w = resolution === "720p" ? 960 : 480;
+  const fps = 15;
+
+  // Etapa 1: concat para MP4 temporário
+  const tmpMp4 = path.join(os.tmpdir(), `sv4_gif_${Date.now()}.mp4`);
+  const inputs = [], filterParts = [], concatParts = [];
+
+  validClips.forEach((clip, i) => {
+    const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
+    inputs.push("-ss", String(clip.trimStart || 0), "-t", String((clip.duration || 5) / speed), "-i", clip.filePath);
+    const vLabel = `[v${i}]`;
+    const aLabel = `[a${i}]`;
+    filterParts.push(`[${i}:v]scale=${w}:-2:flags=lanczos${speed !== 1 ? `,setpts=${(1/speed).toFixed(4)}*PTS` : ""}${vLabel}`);
+    filterParts.push(`[${i}:a]anull${aLabel}`);
+    concatParts.push(vLabel, aLabel);
+  });
+
+  const n = validClips.length;
+  const fc = [...filterParts, `${concatParts.join("")}concat=n=${n}:v=1:a=1[outv][outa]`].join(";");
+
+  await new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, [...inputs, "-filter_complex", fc, "-map", "[outv]",
+      "-c:v", "libx264", "-crf", "22", "-preset", "ultrafast", "-an", "-y", tmpMp4], { windowsHide: true });
+    proc.stderr.on("data", () => {});
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error("Falha ao gerar MP4 intermediario")));
+    proc.on("error", reject);
+  });
+
+  sendProgress("export-progress", { percent: 40 });
+
+  // Etapa 2: gerar paleta
+  const palettePath = path.join(os.tmpdir(), `sv4_palette_${Date.now()}.png`);
+  await new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, ["-i", tmpMp4, "-vf", `fps=${fps},palettegen=max_colors=256:stats_mode=diff`, "-y", palettePath], { windowsHide: true });
+    proc.stderr.on("data", () => {});
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error("Falha ao gerar paleta GIF")));
+    proc.on("error", reject);
+  });
+
+  sendProgress("export-progress", { percent: 70 });
+
+  // Etapa 3: converter com paleta
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, ["-i", tmpMp4, "-i", palettePath,
+      "-lavfi", `fps=${fps}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5`,
+      "-y", outputPath], { windowsHide: true });
+    proc.stderr.on("data", () => {});
+    proc.on("close", (code) => {
+      try { fs.unlinkSync(tmpMp4); fs.unlinkSync(palettePath); } catch {}
+      if (code === 0 && fs.existsSync(outputPath)) {
+        sendProgress("export-progress", { percent: 100, outputPath });
+        resolve({ outputPath });
+      } else reject(new Error("Falha ao converter para GIF"));
+    });
+    proc.on("error", reject);
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

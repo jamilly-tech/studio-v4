@@ -18,6 +18,8 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "adm-zip": "^0.5.17",
+    "archiver": "^8.0.0",
     "electron-updater": "^6.3.9",
     "zustand": "^5.0.14"
   },
@@ -70,8 +72,18 @@
     "win": {
       "icon": "assets/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "publish": {

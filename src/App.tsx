@@ -107,6 +107,7 @@ export function App() {
   const [wmRemoving, setWmRemoving] = useState(false);
   const [wmProgress, setWmProgress] = useState(0);
   const [exportResolution, setExportResolution] = useState<"720p" | "1080p">("1080p");
+  const [exportFormat, setExportFormat] = useState<"v4" | "mp4" | "mov" | "gif" | "mp3" | "wav">("mp4");
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: string; msg: string; type: "error" | "info" | "ok" }[]>([]);
@@ -1160,95 +1161,156 @@ export function App() {
         </div>
 
         {/* ── Modal: Exportar ── */}
-        {dialog === "export" && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { if (exportProgress === null || exportProgress === 100) setDialog(null); }}>
-            <div className="w-[420px] rounded-xl border border-border bg-background p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-sm font-black mb-4">Exportar Vídeo</h2>
+        {dialog === "export" && (() => {
+          const FORMATS = [
+            { id: "v4"  as const, label: ".v4 Portável", sub: "Editável em qualquer PC" },
+            { id: "mp4" as const, label: "MP4",          sub: "H.264 · Para publicar"  },
+            { id: "mov" as const, label: "MOV",          sub: "H.264 · Para edição"    },
+            { id: "gif" as const, label: "GIF",          sub: "Animação"               },
+            { id: "mp3" as const, label: "MP3",          sub: "Áudio comprimido"       },
+            { id: "wav" as const, label: "WAV",          sub: "Áudio sem compressão"   },
+          ] as const;
+          const isVideo  = exportFormat === "mp4" || exportFormat === "mov" || exportFormat === "gif";
+          const isAudio  = exportFormat === "mp3" || exportFormat === "wav";
+          const isPortable = exportFormat === "v4";
 
-              {exportProgress !== null && exportProgress < 100 ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">Exportando... {exportProgress}%</p>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${exportProgress}%` }} />
-                  </div>
-                </div>
-              ) : exportProgress === 100 ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-green-500 font-bold">Exportação concluída!</p>
-                  <button type="button" onClick={() => { setDialog(null); setExportProgress(null); }} className="w-full rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90">
-                    Fechar
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {exportError && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
-                      <p className="text-[11px] text-destructive">{exportError}</p>
+          const getClips = () => visualCopies.map((c) => {
+            const asset = assets.find((a) => a.id === c.assetId);
+            return { filePath: asset?.filePath || "", trimStart: c.trimStart ?? 0, duration: c.duration ?? 5, speed: c.speed ?? 1 };
+          });
+
+          const runExport = async () => {
+            setExportError(null);
+            setExportProgress(0);
+            try {
+              const clips = getClips();
+              if (isPortable) {
+                const snapshot = getProjectSnapshot();
+                const res = await window.studioV4?.savePortableV4?.({ snapshot, defaultName: projectName });
+                if (!res) setExportProgress(null);
+              } else if (isAudio) {
+                const outputPath = await window.studioV4?.showSaveDialog?.({
+                  title: `Exportar ${exportFormat.toUpperCase()}`,
+                  defaultPath: projectName || "export",
+                  filters: [{ name: `Áudio ${exportFormat.toUpperCase()}`, extensions: [exportFormat] }],
+                });
+                if (!outputPath) { setExportProgress(null); return; }
+                await window.studioV4?.exportAudio?.({ clips, outputPath, format: exportFormat });
+              } else if (exportFormat === "gif") {
+                const outputPath = await window.studioV4?.showSaveDialog?.({
+                  title: "Exportar GIF",
+                  defaultPath: projectName || "export",
+                  filters: [{ name: "GIF Animado", extensions: ["gif"] }],
+                });
+                if (!outputPath) { setExportProgress(null); return; }
+                await window.studioV4?.exportGif?.({ clips, outputPath, resolution: exportResolution });
+              } else {
+                const ext = exportFormat;
+                const outputPath = await window.studioV4?.showSaveDialog?.({
+                  title: `Exportar ${ext.toUpperCase()}`,
+                  defaultPath: projectName || "export",
+                  filters: [{ name: `Vídeo ${ext.toUpperCase()}`, extensions: [ext] }],
+                });
+                if (!outputPath) { setExportProgress(null); return; }
+                await window.studioV4?.exportVideo?.({ clips, outputPath, resolution: exportResolution });
+              }
+            } catch (err) {
+              setExportProgress(null);
+              setExportError(err instanceof Error ? err.message : "Erro ao exportar");
+            }
+          };
+
+          return (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => { if (exportProgress === null || exportProgress === 100) setDialog(null); }}>
+              <div className="w-[460px] rounded-xl border border-border bg-background p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-sm font-black mb-4">Exportar</h2>
+
+                {exportProgress !== null && exportProgress < 100 ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      {isPortable ? "Empacotando mídia..." : "Exportando..."} {exportProgress}%
+                    </p>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${exportProgress}%` }} />
                     </div>
-                  )}
+                    {isPortable && <p className="text-[10px] text-muted-foreground">Vídeos são copiados sem recompressão — processo rápido.</p>}
+                  </div>
+                ) : exportProgress === 100 ? (
+                  <div className="space-y-3">
+                    <p className="text-xs text-green-500 font-bold">Exportação concluída!</p>
+                    <button type="button" onClick={() => { setDialog(null); setExportProgress(null); }} className="w-full rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90">Fechar</button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {exportError && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+                        <p className="text-[11px] text-destructive">{exportError}</p>
+                      </div>
+                    )}
 
-                  <div>
-                    <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider mb-1.5">Resolução</p>
-                    <div className="flex gap-2">
-                      {(["720p", "1080p"] as const).map((r) => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setExportResolution(r)}
-                          className={`flex-1 rounded-lg border py-2 text-xs font-bold transition ${exportResolution === r ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
-                        >
-                          {r === "720p" ? "720p (HD)" : "1080p (Full HD)"}
-                        </button>
-                      ))}
+                    {/* Seletor de formato */}
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider mb-2">Formato</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {FORMATS.map((f) => (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => setExportFormat(f.id)}
+                            className={`rounded-lg border p-2 text-left transition ${exportFormat === f.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"}`}
+                          >
+                            <p className={`text-[11px] font-black ${exportFormat === f.id ? "text-primary" : "text-foreground"}`}>{f.label}</p>
+                            <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{f.sub}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Resolução (só para vídeo/gif) */}
+                    {(isVideo) && (
+                      <div>
+                        <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider mb-1.5">Resolução</p>
+                        <div className="flex gap-2">
+                          {(["720p", "1080p"] as const).map((r) => (
+                            <button key={r} type="button" onClick={() => setExportResolution(r)}
+                              className={`flex-1 rounded-lg border py-2 text-xs font-bold transition ${exportResolution === r ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>
+                              {r === "720p" ? "720p (HD)" : "1080p (Full HD)"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Info contextual */}
+                    <div className="text-[10px] text-muted-foreground space-y-0.5">
+                      <p>{visualCopies.length} clipe{visualCopies.length !== 1 ? "s" : ""} na timeline</p>
+                      {isPortable && <p className="text-amber-400/80">Inclui todos os arquivos de mídia — abre em qualquer PC com Studio V4 instalado.</p>}
+                      {exportFormat === "mp4" && <p>MP4 H.264 · AAC 192k</p>}
+                      {exportFormat === "mov" && <p>MOV H.264 · AAC 192k · compatível com Premiere e DaVinci</p>}
+                      {exportFormat === "gif" && <p>GIF com paleta de 256 cores · 15fps · sem áudio</p>}
+                      {exportFormat === "mp3" && <p>MP3 192k · áudio de todos os clipes concatenados</p>}
+                      {exportFormat === "wav" && <p>WAV PCM 16-bit · sem compressão · qualidade máxima</p>}
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button type="button" onClick={() => { setDialog(null); setExportError(null); }} className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground">
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={visualCopies.length === 0}
+                        onClick={runExport}
+                        className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-40"
+                      >
+                        Exportar {exportFormat === "v4" ? ".v4" : exportFormat.toUpperCase()}
+                      </button>
                     </div>
                   </div>
-
-                  <div className="text-[10px] text-muted-foreground space-y-0.5">
-                    <p>{visualCopies.length} clipe{visualCopies.length !== 1 ? "s" : ""} na timeline</p>
-                    <p>Formato: MP4 H.264 — AAC 192k</p>
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => { setDialog(null); setExportError(null); }} className="flex-1 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted-foreground hover:text-foreground">
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={visualCopies.length === 0}
-                      onClick={async () => {
-                        setExportError(null);
-                        const outputPath = await window.studioV4?.showSaveDialog?.({
-                          title: "Exportar vídeo",
-                          defaultPath: projectName || "export",
-                          filters: [{ name: "Vídeo MP4", extensions: ["mp4"] }],
-                        });
-                        if (!outputPath) return;
-                        setExportProgress(0);
-                        try {
-                          const clips = visualCopies.map((c) => {
-                            const asset = assets.find((a) => a.id === c.assetId);
-                            return {
-                              filePath: asset?.filePath || "",
-                              trimStart: c.trimStart ?? 0,
-                              duration: c.duration ?? 5,
-                              speed: c.speed ?? 1,
-                            };
-                          });
-                          await window.studioV4?.exportVideo?.({ clips, outputPath, resolution: exportResolution });
-                        } catch (err) {
-                          setExportProgress(null);
-                          setExportError(err instanceof Error ? err.message : "Erro ao exportar");
-                        }
-                      }}
-                      className="flex-1 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-40"
-                    >
-                      Exportar
-                    </button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          );
+        })()}
         )}
 
         {/* ── Toasts ── */}
