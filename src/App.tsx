@@ -1311,7 +1311,6 @@ export function App() {
             </div>
           );
         })()}
-        )}
 
         {/* ── Toasts ── */}
         {toasts.length > 0 && (
