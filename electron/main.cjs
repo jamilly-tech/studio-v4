@@ -491,7 +491,18 @@ ipcMain.handle("media:save-audio", async (_event, srcPath, defaultName) => {
 
 // ── 6c. Transcribe via Groq Whisper (chave no backend) ──────────────────────
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || (() => {
+  // Re-leitura direta caso loadEnv() tenha rodado antes de process.resourcesPath estar definido
+  try {
+    const envPath = path.join(process.resourcesPath || path.join(__dirname, ".."), ".env");
+    const lines = fs.readFileSync(envPath, "utf-8").split("\n");
+    for (const line of lines) {
+      const m = line.match(/^GROQ_API_KEY=(.+)$/);
+      if (m) return m[1].trim();
+    }
+  } catch {}
+  return "";
+})();
 
 const LANG_PROMPTS = {
   pt: "Transcreva em portugues brasileiro com acentuacao correta, virgulas, pontos e pontuacao gramatical. Use letras maiusculas no inicio de frases.",

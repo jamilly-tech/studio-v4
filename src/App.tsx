@@ -103,6 +103,12 @@ export function App() {
   const [captionFont, setCaptionFont] = useState("Arial");
   const [captionFontSize, setCaptionFontSize] = useState(9);
   const [captionBold, setCaptionBold] = useState(true);
+  const [captionItalic, setCaptionItalic] = useState(false);
+  const [captionColor, setCaptionColor] = useState("#ffffff");
+  const [captionBgColor, setCaptionBgColor] = useState("#000000");
+  const [captionBgOpacity, setCaptionBgOpacity] = useState(80);
+  const [captionShadow, setCaptionShadow] = useState(false);
+  const [captionOutline, setCaptionOutline] = useState(false);
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wmRemoving, setWmRemoving] = useState(false);
   const [wmProgress, setWmProgress] = useState(0);
@@ -812,15 +818,21 @@ export function App() {
                             window.addEventListener("pointerup", up);
                           }}
                         >
-                          <div className="rounded-md bg-black/80 px-3 py-1.5 text-center backdrop-blur-sm">
-                            <p className="leading-snug text-white" style={{ fontFamily: captionFont, fontSize: `${captionFontSize}px`, fontWeight: captionBold ? "bold" : "normal" }}>
-                              {line1}
-                            </p>
-                            {line2 && (
-                              <p className="leading-snug text-white" style={{ fontFamily: captionFont, fontSize: `${captionFontSize}px`, fontWeight: captionBold ? "bold" : "normal" }}>
-                                {line2}
-                              </p>
-                            )}
+                          <div className="rounded-md px-3 py-1.5 text-center" style={{
+                            backgroundColor: captionBgOpacity > 0
+                              ? `${captionBgColor}${Math.round(captionBgOpacity * 2.55).toString(16).padStart(2, "0")}`
+                              : "transparent",
+                          }}>
+                            {[line1, line2].filter(Boolean).map((line, i) => (
+                              <p key={i} className="leading-snug" style={{
+                                fontFamily: captionFont,
+                                fontSize: `${captionFontSize}px`,
+                                fontWeight: captionBold ? "bold" : "normal",
+                                fontStyle: captionItalic ? "italic" : "normal",
+                                color: captionColor,
+                                textShadow: captionShadow ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.7)" : captionOutline ? "1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000" : "none",
+                              }}>{line}</p>
+                            ))}
                           </div>
                         </div>
                       );
@@ -1005,9 +1017,11 @@ export function App() {
                     />
                   ) : activeTool === "captions" ? (
                     <>
-                    {/* Estilo da legenda */}
+                    {/* Estilo da legenda — painel completo */}
                     <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2 mb-1">
-                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Estilo da legenda</p>
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Texto</p>
+
+                      {/* Fonte */}
                       <div className="flex items-center gap-2">
                         <label className="text-[9px] text-muted-foreground w-9 shrink-0">Fonte</label>
                         <select
@@ -1030,19 +1044,89 @@ export function App() {
                           onKeyDown={(e) => { if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) setCaptionFont((e.target as HTMLInputElement).value.trim()); }}
                         />
                       </div>
+
+                      {/* Tamanho */}
                       <div className="flex items-center gap-2">
                         <label className="text-[9px] text-muted-foreground w-9 shrink-0">Tam.</label>
-                        <input type="range" min={8} max={36} step={1} value={captionFontSize}
+                        <input type="range" min={8} max={48} step={1} value={captionFontSize}
                           onChange={(e) => setCaptionFontSize(Number(e.target.value))}
                           className="flex-1 h-1 accent-primary" />
                         <span className="text-[9px] text-muted-foreground w-6 tabular-nums">{captionFontSize}px</span>
                       </div>
+
+                      {/* Cor do texto */}
                       <div className="flex items-center gap-2">
-                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Negrito</label>
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Cor</label>
+                        <input type="color" value={captionColor} onChange={(e) => setCaptionColor(e.target.value)}
+                          className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent p-0" />
+                        <span className="text-[9px] text-muted-foreground font-mono">{captionColor}</span>
+                      </div>
+
+                      {/* Negrito / Itálico */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Estilo</label>
                         <button type="button" onClick={() => setCaptionBold(b => !b)}
                           className={`rounded px-2 py-0.5 text-[9px] font-bold transition ${captionBold ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
-                          {captionBold ? "Sim" : "Não"}
+                          N
                         </button>
+                        <button type="button" onClick={() => setCaptionItalic(b => !b)}
+                          className={`rounded px-2 py-0.5 text-[9px] italic transition ${captionItalic ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
+                          I
+                        </button>
+                      </div>
+
+                      {/* Separador */}
+                      <div className="border-t border-border/40 my-0.5" />
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Fundo</p>
+
+                      {/* Cor do fundo */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Cor</label>
+                        <input type="color" value={captionBgColor} onChange={(e) => setCaptionBgColor(e.target.value)}
+                          className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent p-0" />
+                        <button type="button" onClick={() => setCaptionBgOpacity(op => op > 0 ? 0 : 80)}
+                          className={`ml-auto rounded px-2 py-0.5 text-[9px] transition ${captionBgOpacity > 0 ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
+                          {captionBgOpacity > 0 ? "Ligado" : "Desligado"}
+                        </button>
+                      </div>
+
+                      {/* Opacidade do fundo */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Opac.</label>
+                        <input type="range" min={0} max={100} step={5} value={captionBgOpacity}
+                          onChange={(e) => setCaptionBgOpacity(Number(e.target.value))}
+                          className="flex-1 h-1 accent-primary" />
+                        <span className="text-[9px] text-muted-foreground w-7 tabular-nums">{captionBgOpacity}%</span>
+                      </div>
+
+                      {/* Separador */}
+                      <div className="border-t border-border/40 my-0.5" />
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Efeitos</p>
+
+                      {/* Sombra / Contorno */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Efeito</label>
+                        <button type="button" onClick={() => { setCaptionShadow(v => !v); setCaptionOutline(false); }}
+                          className={`rounded px-2 py-0.5 text-[9px] transition ${captionShadow ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
+                          Sombra
+                        </button>
+                        <button type="button" onClick={() => { setCaptionOutline(v => !v); setCaptionShadow(false); }}
+                          className={`rounded px-2 py-0.5 text-[9px] transition ${captionOutline ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
+                          Contorno
+                        </button>
+                      </div>
+
+                      {/* Separador */}
+                      <div className="border-t border-border/40 my-0.5" />
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Posição</p>
+
+                      {/* Y — slider de posição */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Y</label>
+                        <input type="range" min={2} max={88} step={1} value={Math.round(captionY)}
+                          onChange={(e) => setCaptionY(Number(e.target.value))}
+                          className="flex-1 h-1 accent-primary" />
+                        <span className="text-[9px] text-muted-foreground w-7 tabular-nums">{Math.round(captionY)}%</span>
                       </div>
                     </div>
                     <TranscriptionPanel
