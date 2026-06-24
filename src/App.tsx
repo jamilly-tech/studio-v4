@@ -193,7 +193,17 @@ export function App() {
     assets: assets.map((a) => ({ ...a, file: undefined })),
     visualCopies,
     captionSegments,
-  }), [projectName, assets, visualCopies, captionSegments]);
+    captionStyle: {
+      fontFamily: captionFont,
+      fontSize: captionFontSize,
+      color: captionColor,
+      bgColor: captionBgColor,
+      bgOpacity: captionBgOpacity,
+      shadow: captionShadow,
+      outline: captionOutline,
+      captionY,
+    },
+  }), [projectName, assets, visualCopies, captionSegments, captionFont, captionFontSize, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY]);
 
   // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
   const activeMediaContext = useMemo(() => {
@@ -222,6 +232,17 @@ export function App() {
         id: s.id || createLocalId("cap"),
       }))
     );
+    if (data.captionStyle) {
+      const cs = data.captionStyle as Record<string, unknown>;
+      if (cs.fontFamily) setCaptionFont(cs.fontFamily as string);
+      if (cs.fontSize) setCaptionFontSize(cs.fontSize as number);
+      if (cs.color) setCaptionColor(cs.color as string);
+      if (cs.bgColor) setCaptionBgColor(cs.bgColor as string);
+      if (cs.bgOpacity !== undefined) setCaptionBgOpacity(cs.bgOpacity as number);
+      if (cs.shadow !== undefined) setCaptionShadow(cs.shadow as boolean);
+      if (cs.outline !== undefined) setCaptionOutline(cs.outline as boolean);
+      if (cs.captionY !== undefined) setCaptionY(cs.captionY as number);
+    }
 
     if (data.assets && Array.isArray(data.assets)) {
       // Re-registra caminhos no proxy do servidor local e reconstrói URLs
@@ -1401,6 +1422,7 @@ export function App() {
               onSelectAsset={setSelectedAssetId}
               selectedCopyId={selectedCopyId}
               onSelectCopy={setSelectedCopyId}
+              captionSegments={captionSegments}
               currentTime={currentTime}
               onExtractAudioFromClip={handleExtractAudioFromClip}
               onSeek={(t) => {
