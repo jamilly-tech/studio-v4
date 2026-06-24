@@ -1324,12 +1324,16 @@ ipcMain.handle("export-audio", async (_event, { clips, outputPath, format }) => 
         }
       }
     });
-    proc.stderr.on("data", () => {});
+    let stderrBuf = "";
+    proc.stderr.on("data", (d) => { stderrBuf += d.toString(); });
     proc.on("close", (code) => {
       if (code === 0 && fs.existsSync(outputPath)) {
         sendProgress("export-progress", { percent: 100, outputPath });
         resolve({ outputPath });
-      } else reject(new Error(`FFmpeg encerrou com codigo ${code}`));
+      } else {
+        const detail = stderrBuf.slice(-400).trim();
+        reject(new Error(`FFmpeg encerrou com codigo ${code}${detail ? `\n${detail}` : ""}`));
+      }
     });
     proc.on("error", reject);
   });
@@ -1366,8 +1370,9 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
   await new Promise((resolve, reject) => {
     const proc = spawn(ffmpegPath, [...inputs, "-filter_complex", fc, "-map", "[outv]",
       "-c:v", "libx264", "-crf", "22", "-preset", "ultrafast", "-an", "-y", tmpMp4], { windowsHide: true });
-    proc.stderr.on("data", () => {});
-    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error("Falha ao gerar MP4 intermediario")));
+    let se = "";
+    proc.stderr.on("data", (d) => { se += d.toString(); });
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Falha ao gerar MP4 intermediario${se ? `\n${se.slice(-300)}` : ""}`)));
     proc.on("error", reject);
   });
 
@@ -1377,8 +1382,9 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
   const palettePath = path.join(os.tmpdir(), `sv4_palette_${Date.now()}.png`);
   await new Promise((resolve, reject) => {
     const proc = spawn(ffmpegPath, ["-i", tmpMp4, "-vf", `fps=${fps},palettegen=max_colors=256:stats_mode=diff`, "-y", palettePath], { windowsHide: true });
-    proc.stderr.on("data", () => {});
-    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error("Falha ao gerar paleta GIF")));
+    let se = "";
+    proc.stderr.on("data", (d) => { se += d.toString(); });
+    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Falha ao gerar paleta GIF${se ? `\n${se.slice(-300)}` : ""}`)));
     proc.on("error", reject);
   });
 
@@ -1389,13 +1395,14 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
     const proc = spawn(ffmpegPath, ["-i", tmpMp4, "-i", palettePath,
       "-lavfi", `fps=${fps}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5`,
       "-y", outputPath], { windowsHide: true });
-    proc.stderr.on("data", () => {});
+    let se = "";
+    proc.stderr.on("data", (d) => { se += d.toString(); });
     proc.on("close", (code) => {
       try { fs.unlinkSync(tmpMp4); fs.unlinkSync(palettePath); } catch {}
       if (code === 0 && fs.existsSync(outputPath)) {
         sendProgress("export-progress", { percent: 100, outputPath });
         resolve({ outputPath });
-      } else reject(new Error("Falha ao converter para GIF"));
+      } else reject(new Error(`Falha ao converter para GIF${se ? `\n${se.slice(-400)}` : ""}`));
     });
     proc.on("error", reject);
   });
@@ -1476,13 +1483,17 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
         }
       }
     });
-    proc.stderr.on("data", () => {});
+    let stderrBuf = "";
+    proc.stderr.on("data", (d) => { stderrBuf += d.toString(); });
     proc.on("close", (code) => {
       if (srtTmpPath) { try { fs.unlinkSync(srtTmpPath); } catch {} }
       if (code === 0 && fs.existsSync(outputPath)) {
         sendProgress("export-progress", { percent: 100, outputPath });
         resolve({ outputPath });
-      } else reject(new Error(`FFmpeg encerrou com codigo ${code}`));
+      } else {
+        const detail = stderrBuf.slice(-400).trim();
+        reject(new Error(`FFmpeg encerrou com codigo ${code}${detail ? `\n${detail}` : ""}`));
+      }
     });
     proc.on("error", reject);
   });

@@ -985,7 +985,7 @@ export function App() {
                                       updateAsset(previewAsset.id, { previewUrl: result.proxyUrl, url: result.proxyUrl });
                                     }
                                   } catch (err) {
-                                    console.error(err);
+                                    addToast(`Remoção de marca falhou: ${err instanceof Error ? err.message : String(err)}`, "error");
                                   } finally {
                                     unsub?.();
                                     setWmRemoving(false);

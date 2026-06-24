@@ -89,8 +89,9 @@ export function DrivePanel({
     try {
       const list = await gDriveListFiles(t, f);
       setFiles(list);
-    } catch {
+    } catch (err) {
       setFiles([]);
+      setError(err instanceof Error ? err.message : "Falha ao listar arquivos do Drive");
     }
   }
 
