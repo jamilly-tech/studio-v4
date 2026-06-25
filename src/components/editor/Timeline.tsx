@@ -452,7 +452,7 @@ export function Timeline({
                   style={{ height: videoTrackList.length * trackH }}>
                   <Film className="size-3 text-muted-foreground" />
                   <span className="text-[7px] font-bold text-muted-foreground/60">V{videoTrackList.length > 1 ? "" : ""}</span>
-                  <button type="button" onClick={() => {/* add video track just expands */}} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/40 hover:text-foreground" title="Adicionar track">
+                  <button type="button" onClick={addVideoTrack} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/40 hover:text-foreground" title="Adicionar track de vídeo">
                     <Plus className="size-2.5" />
                   </button>
                 </div>
@@ -476,7 +476,7 @@ export function Timeline({
                   style={{ height: audioTrackList.length * trackH }}>
                   <Music2 className="size-3 text-green-500/60" />
                   <span className="text-[7px] font-bold text-muted-foreground/60">A</span>
-                  <button type="button" className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/40 hover:text-foreground" title="Adicionar track">
+                  <button type="button" onClick={addAudioTrack} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/40 hover:text-foreground" title="Adicionar track de áudio">
                     <Plus className="size-2.5" />
                   </button>
                 </div>

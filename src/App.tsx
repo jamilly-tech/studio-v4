@@ -488,7 +488,7 @@ export function App() {
   }, [ingestFiles, setVisualCopies]);
 
 
-  function handleMenuCommand(command: MenuCommand) {
+  async function handleMenuCommand(command: MenuCommand) {
     switch (command) {
       case "home": setScreen("home"); break;
       case "new-project": {
@@ -539,14 +539,43 @@ export function App() {
       case "slice":
         window.dispatchEvent(new CustomEvent("timeline:split"));
         break;
-      case "save-layout":
-      case "load-layout":
-      case "reset-layout":
-        addToast("Layout personalizado em desenvolvimento.", "info");
+      case "save-layout": {
+        const cfg = (await window.studioV4?.readConfig?.()) || {};
+        const ok = await window.studioV4?.writeConfig?.({
+          ...cfg,
+          savedLayout: { activeTool, theme, exportResolution, exportFormat },
+        });
+        addToast(ok !== false ? "Layout salvo." : "Falha ao salvar layout.", ok !== false ? "ok" : "error");
         break;
-      case "share":
-        addToast("Compartilhamento em desenvolvimento.", "info");
+      }
+      case "load-layout": {
+        const cfg = (await window.studioV4?.readConfig?.()) || {};
+        const layout = cfg.savedLayout as Record<string, unknown> | undefined;
+        if (!layout) { addToast("Nenhum layout salvo.", "info"); break; }
+        if (layout.activeTool) setActiveTool(layout.activeTool as typeof activeTool);
+        if (layout.theme) setTheme(layout.theme as typeof theme);
+        if (layout.exportResolution) setExportResolution(layout.exportResolution as typeof exportResolution);
+        if (layout.exportFormat) setExportFormat(layout.exportFormat as typeof exportFormat);
+        addToast("Layout restaurado.", "ok");
         break;
+      }
+      case "reset-layout": {
+        const cfg = (await window.studioV4?.readConfig?.()) || {};
+        const { savedLayout: _removed, ...rest } = cfg as Record<string, unknown>;
+        await window.studioV4?.writeConfig?.(rest);
+        setActiveTool("media");
+        setTheme("dark");
+        setExportResolution("1080p");
+        setExportFormat("mp4");
+        addToast("Layout restaurado ao padrão.", "ok");
+        break;
+      }
+      case "share": {
+        const snapshot = getProjectSnapshot();
+        const res = await window.studioV4?.savePortableV4?.({ snapshot, defaultName: projectName + "_compartilhar" });
+        if (res) addToast("Arquivo .v4 salvo — compartilhe este arquivo.", "ok");
+        break;
+      }
       case "open-file":
         window.studioV4?.openProjectFile?.().then((data: unknown) => {
           if (data) { handleLoadProject(data); setScreen("editor"); }
