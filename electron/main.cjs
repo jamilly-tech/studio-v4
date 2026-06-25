@@ -578,6 +578,7 @@ ipcMain.handle("media:transcribe", async (_event, filePath, language, trimStart,
 
   const { code, stdout, stderr } = await runProcess(pythonCmd, [scriptPath, model, wavPath, lang]);
   try { fs.unlinkSync(wavPath); } catch {}
+  try { fs.unlinkSync(scriptPath); } catch {}
 
   sendProgress("media:progress", { filePath, stage: "transcribe", percent: 100 });
 
@@ -1180,7 +1181,11 @@ ipcMain.handle("save-project-file", async (_event, { snapshot, defaultName }) =>
     ...snapshot,
     assets: (snapshot.assets || []).map(a => ({ ...a, url: "", previewUrl: "", file: undefined })),
   };
-  fs.writeFileSync(savePath, JSON.stringify(cleanSnapshot, null, 2), "utf-8");
+  try {
+    fs.writeFileSync(savePath, JSON.stringify(cleanSnapshot, null, 2), "utf-8");
+  } catch (err) {
+    throw new Error(`Não foi possível salvar o arquivo: ${err.message}`);
+  }
   return savePath;
 });
 
@@ -1395,8 +1400,11 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
       "-c:v", "libx264", "-crf", "22", "-preset", "ultrafast", "-an", "-y", tmpMp4], { windowsHide: true });
     let se = "";
     proc.stderr.on("data", (d) => { se += d.toString(); });
-    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Falha ao gerar MP4 intermediario${se ? `\n${se.slice(-300)}` : ""}`)));
-    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) { resolve(); }
+      else { try { fs.unlinkSync(tmpMp4); } catch {} reject(new Error(`Falha ao gerar MP4 intermediario${se ? `\n${se.slice(-300)}` : ""}`)); }
+    });
+    proc.on("error", (err) => { try { fs.unlinkSync(tmpMp4); } catch {} reject(err); });
   });
 
   sendProgress("export-progress", { percent: 40 });
@@ -1407,8 +1415,11 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
     const proc = spawn(ffmpegPath, ["-i", tmpMp4, "-vf", `fps=${fps},palettegen=max_colors=256:stats_mode=diff`, "-y", palettePath], { windowsHide: true });
     let se = "";
     proc.stderr.on("data", (d) => { se += d.toString(); });
-    proc.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Falha ao gerar paleta GIF${se ? `\n${se.slice(-300)}` : ""}`)));
-    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) { resolve(); }
+      else { try { fs.unlinkSync(tmpMp4); fs.unlinkSync(palettePath); } catch {} reject(new Error(`Falha ao gerar paleta GIF${se ? `\n${se.slice(-300)}` : ""}`)); }
+    });
+    proc.on("error", (err) => { try { fs.unlinkSync(tmpMp4); fs.unlinkSync(palettePath); } catch {} reject(err); });
   });
 
   sendProgress("export-progress", { percent: 70 });

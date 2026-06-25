@@ -66,6 +66,10 @@ export function Timeline({
     return a?.kind === "audio";
   });
 
+  // Extra tracks adicionadas manualmente pelo usuário (além das derivadas dos clipes)
+  const [extraVideoTracks, setExtraVideoTracks] = useState(0);
+  const [extraAudioTracks, setExtraAudioTracks] = useState(0);
+
   // Tracks por trackIndex explícito (permite overlay manual)
   const videoTrackIndices = new Set(videoClips.map((c) => c.trackIndex ?? 0));
   const audioTrackIndices = new Set(audioClips.map((c) => c.trackIndex ?? 0));
@@ -76,6 +80,18 @@ export function Timeline({
 
   const videoTrackList = [...videoTrackIndices].sort((a, b) => a - b);
   const audioTrackList = [...audioTrackIndices].sort((a, b) => a - b);
+
+  // Adicionar extra tracks acima das existentes
+  const maxVideoTrack = Math.max(...videoTrackList);
+  const maxAudioTrack = Math.max(...audioTrackList);
+  for (let i = 1; i <= extraVideoTracks; i++) {
+    const idx = maxVideoTrack + i;
+    if (!videoTrackIndices.has(idx)) videoTrackList.push(idx);
+  }
+  for (let i = 1; i <= extraAudioTracks; i++) {
+    const idx = maxAudioTrack + i;
+    if (!audioTrackIndices.has(idx)) audioTrackList.push(idx);
+  }
 
   const totalDuration = visualCopies.reduce((max, c) => {
     const start = c.startTime ?? 0;
@@ -205,18 +221,8 @@ export function Timeline({
 
   const handleTrimEnd = useCallback(() => setTrimState(null), []);
 
-  // Adicionar nova track de vídeo
-  const addVideoTrack = useCallback(() => {
-    const maxTrack = Math.max(...videoClips.map((c) => c.trackIndex ?? 0), -1);
-    // Marca no state que existe essa track (via um clipe fantasma que será removido)
-    // Na prática, basta o usuário arrastar um clipe com trackIndex > 0
-    // Aqui só expandimos a visualização
-    videoTrackList.push(maxTrack + 1);
-  }, [videoClips, videoTrackList]);
-
-  const addAudioTrack = useCallback(() => {
-    audioTrackList.push(Math.max(...audioClips.map((c) => c.trackIndex ?? 0), -1) + 1);
-  }, [audioClips, audioTrackList]);
+  const addVideoTrack = useCallback(() => setExtraVideoTracks(n => n + 1), []);
+  const addAudioTrack = useCallback(() => setExtraAudioTracks(n => n + 1), []);
 
   // ── Slot management ─────────────────────────────────────────────────────
 
