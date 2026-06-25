@@ -913,6 +913,136 @@ export function App() {
                       );
                     })()}
 
+                    {/* Social chrome overlay — visível apenas no painel Legendas */}
+                    {activeTool === "captions" && (() => {
+                      const fmt = activeFormat.id;
+                      const isVertical = fmt === "reels" || fmt === "tiktok" || fmt === "story";
+                      const isYT = fmt === "youtube";
+                      if (!isVertical && !isYT) return null;
+                      return (
+                        <div className="absolute inset-0 pointer-events-none select-none" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+                          {isVertical && (
+                            <>
+                              {/* Barra superior — perfil */}
+                              <div className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 100%)" }}>
+                                <div className="w-7 h-7 rounded-full bg-white/20 border border-white/40 shrink-0" />
+                                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                                  <div className="h-2 w-20 rounded bg-white/70" />
+                                  <div className="h-1.5 w-14 rounded bg-white/40" />
+                                </div>
+                                {fmt !== "story" && (
+                                  <div className="rounded border border-white/60 px-2 py-0.5 text-white/80" style={{ fontSize: "7px", fontWeight: 600 }}>Seguir</div>
+                                )}
+                              </div>
+
+                              {/* Gradiente inferior */}
+                              <div className="absolute bottom-0 inset-x-0 h-[30%]" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.70) 0%, transparent 100%)" }} />
+
+                              {/* Botões laterais direitos (reels/tiktok) */}
+                              {fmt !== "story" && (
+                                <div className="absolute right-2.5 flex flex-col items-center gap-3" style={{ bottom: "14%" }}>
+                                  {[
+                                    { icon: "♥", label: fmt === "tiktok" ? "45.2K" : "12K" },
+                                    { icon: "💬", label: fmt === "tiktok" ? "1.2K" : "234" },
+                                    { icon: "↗", label: "Comp." },
+                                    ...(fmt === "tiktok" ? [{ icon: "⊕", label: "Salvar" }] : [{ icon: "🔖", label: "Salvar" }]),
+                                  ].map((btn, i) => (
+                                    <div key={i} className="flex flex-col items-center gap-0.5">
+                                      <div className="w-8 h-8 rounded-full bg-black/30 flex items-center justify-center" style={{ fontSize: "14px" }}>{btn.icon}</div>
+                                      <span className="text-white/70" style={{ fontSize: "6px" }}>{btn.label}</span>
+                                    </div>
+                                  ))}
+                                  {fmt === "tiktok" && (
+                                    <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-white/60 flex items-center justify-center mt-1" style={{ fontSize: "8px" }}>♫</div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Área de descrição / comentários — parte inferior esquerda */}
+                              <div className="absolute left-3 flex flex-col gap-1" style={{ bottom: fmt === "story" ? "8%" : "13%", maxWidth: "68%" }}>
+                                {fmt !== "story" && (
+                                  <>
+                                    <div className="h-2 w-28 rounded bg-white/80" />
+                                    <div className="h-1.5 w-40 rounded bg-white/50" />
+                                    <div className="h-1.5 w-32 rounded bg-white/40" />
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Barra de comentário (reels/tiktok) */}
+                              {fmt !== "story" && (
+                                <div className="absolute bottom-0 inset-x-0 flex items-center gap-2 px-3 py-2" style={{ background: "rgba(0,0,0,0.4)" }}>
+                                  <div className="w-5 h-5 rounded-full bg-white/20 border border-white/30 shrink-0" />
+                                  <div className="flex-1 rounded-full bg-white/10 border border-white/20 h-5" />
+                                </div>
+                              )}
+
+                              {/* Story: barra de progresso no topo */}
+                              {fmt === "story" && (
+                                <div className="absolute top-0 inset-x-0 flex gap-1 px-2 pt-1.5">
+                                  {[0.7, 1, 0].map((fill, i) => (
+                                    <div key={i} className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
+                                      <div className="h-full bg-white/80" style={{ width: `${fill * 100}%` }} />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Legenda de zona segura */}
+                              <div className="absolute inset-x-0 flex justify-center pointer-events-none" style={{ bottom: `${CAPTION_SAFE_ZONE[activeFormat.id] ?? 12}%` }}>
+                                <div className="border-t border-dashed border-yellow-400/40 w-[80%]" />
+                              </div>
+                            </>
+                          )}
+
+                          {isYT && (
+                            <>
+                              {/* Barra inferior YouTube */}
+                              <div className="absolute bottom-0 inset-x-0 flex flex-col" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)" }}>
+                                <div className="flex items-end gap-2 px-3 pb-2 pt-8">
+                                  <div className="flex flex-col gap-1 flex-1">
+                                    <div className="h-2 w-48 rounded bg-white/80" />
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-5 h-5 rounded-full bg-white/30 shrink-0" />
+                                      <div className="h-1.5 w-24 rounded bg-white/50" />
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 items-center shrink-0">
+                                    {["👍", "👎", "↗"].map((ico, i) => (
+                                      <div key={i} className="flex flex-col items-center gap-0.5">
+                                        <span style={{ fontSize: "12px" }}>{ico}</span>
+                                        <span className="text-white/60" style={{ fontSize: "6px" }}>12K</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                {/* Progress bar */}
+                                <div className="h-1 bg-white/20 mx-3 rounded-full mb-1">
+                                  <div className="h-full w-[35%] bg-red-500/80 rounded-full" />
+                                </div>
+                                {/* Controles */}
+                                <div className="flex items-center gap-2 px-3 pb-2 text-white/70" style={{ fontSize: "10px" }}>
+                                  <span>▶</span><span>⏭</span><span>🔊</span>
+                                  <span className="font-mono ml-1" style={{ fontSize: "7px" }}>0:35 / 2:10</span>
+                                  <div className="flex-1" />
+                                  <span>⛶</span>
+                                </div>
+                              </div>
+                              {/* Safe zone line */}
+                              <div className="absolute inset-x-0 flex justify-center" style={{ bottom: `${CAPTION_SAFE_ZONE[activeFormat.id] ?? 12}%` }}>
+                                <div className="border-t border-dashed border-yellow-400/40 w-[90%]" />
+                              </div>
+                            </>
+                          )}
+
+                          {/* Label do chrome */}
+                          <div className="absolute top-1 right-1 rounded bg-black/50 px-1.5 py-0.5" style={{ fontSize: "7px", color: "rgba(255,255,255,0.5)" }}>
+                            {activeFormat.label} · chrome preview
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Move/resize handle overlay */}
                     {previewTool === "move" && previewUrl && (
                       <div
