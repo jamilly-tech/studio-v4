@@ -32,6 +32,7 @@ import {
   Wand2, Captions, SlidersHorizontal, Cloud, Layers, Settings,
   Smartphone, Monitor, Square, RectangleHorizontal, Circle,
   Move, Crop, Eraser, PenTool, ChevronDown, SplitSquareVertical, Stamp, X,
+  Search, Download, Mic, Sparkles, FolderOpen, Zap,
 } from "lucide-react";
 
 type PreviewToolId = "move" | "crop" | "chroma" | "mask-rect" | "mask-circle" | "mask-pen" | "remove-wm" | null;
@@ -64,16 +65,27 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
   wide: <Monitor className="size-3.5" />,
 };
 
-const sidebarTools: { id: ToolId; label: string; icon: typeof Film }[] = [
-  { id: "media", label: "Midia", icon: Film },
-  { id: "audio", label: "Audio", icon: Music2 },
-  { id: "presets", label: "Presets", icon: Layers },
-  { id: "text", label: "Texto", icon: Type },
-  { id: "captions", label: "Legendas", icon: Captions },
-  { id: "effects", label: "Efeitos", icon: Wand2 },
-  { id: "ai", label: "Corte", icon: Scissors },
-  { id: "settings", label: "Config", icon: Settings },
+const sidebarTools: { id: ToolId; label: string; icon: typeof Film; tips: string[] }[] = [
+  { id: "media",    label: "Mídia",    icon: Film,              tips: ["Importar vídeo, áudio ou imagem", "Biblioteca de arquivos do projeto", "Arrastar para timeline"] },
+  { id: "audio",    label: "Áudio",    icon: Music2,            tips: ["Separar voz e música (stems)", "Extrair áudio em WAV/MP3", "Ajustar volume por faixa"] },
+  { id: "presets",  label: "Presets",  icon: Layers,            tips: ["LUTs e filtros de cor", "Presets Adobe, DaVinci, CapCut", "Arrastar o preset para o clipe"] },
+  { id: "text",     label: "Texto",    icon: Type,              tips: ["Adicionar texto ao vídeo", "Títulos e chamadas"] },
+  { id: "captions", label: "Legendas", icon: Captions,          tips: ["Transcrição automática por IA", "PT-BR, inglês, espanhol", "5 presets de estilo prontos"] },
+  { id: "effects",  label: "Efeitos",  icon: Wand2,             tips: ["14 efeitos visuais", "Brilho, contraste, cinema, neon", "Preview ao vivo antes de aplicar"] },
+  { id: "ai",       label: "Corte IA", icon: Scissors,          tips: ["Corte limpo — remove silêncios", "Detecta takes repetidos", "Análise automática do áudio"] },
+  { id: "settings", label: "Config",   icon: Settings,          tips: ["Configurações de export", "Resolução, formato, qualidade", "Atalhos e preferências"] },
 ];
+
+const SIDEBAR_DESCRIPTIONS: Record<string, string> = {
+  media:    "Biblioteca de mídia",
+  audio:    "Ferramentas de áudio",
+  presets:  "Filtros e LUTs",
+  text:     "Texto e títulos",
+  captions: "Legendas automáticas",
+  effects:  "Efeitos visuais",
+  ai:       "Corte inteligente por IA",
+  settings: "Configurações",
+};
 
 const CAPTION_PRESETS = [
   { id: "limpo",    label: "Limpo",    font: "Arial",    size: 20, bold: false, italic: false, color: "#ffffff", bgColor: "#000000", bgOpacity: 65, shadow: false, outline: false, y: 12 },
@@ -122,6 +134,8 @@ export function App() {
   const [captionOutline, setCaptionOutline] = useState(false);
   const [captionExportEnabled, setCaptionExportEnabled] = useState(true);
   const [previewQuality, setPreviewQuality] = useState<"auto" | "low">("auto");
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
   const [captionChrome, setCaptionChrome] = useState<"reels" | "tiktok" | "story" | "youtube" | "off">("reels");
   const [selectedCopyId, setSelectedCopyId] = useState<string | null>(null);
   const [whisperModel, setWhisperModel] = useState("small");
@@ -364,6 +378,8 @@ export function App() {
     function handleKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setCmdOpen(o => !o); setCmdQuery(""); }
+      if (e.key === "Escape") { setCmdOpen(false); }
       if (e.key === " " && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)) {
         e.preventDefault();
         setIsPlaying((p) => !p);
@@ -651,26 +667,53 @@ export function App() {
         )}
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {/* ── Sidebar com labels ── */}
+          {/* ── Sidebar com labels + tooltips ── */}
           <aside className="flex w-[72px] flex-col items-center gap-0.5 border-r border-border bg-background py-2 overflow-y-auto">
-            {sidebarTools.map(({ id, label, icon: Icon }) => {
+            {sidebarTools.map(({ id, label, icon: Icon, tips }) => {
               const isActive = activeTool === id;
               return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setActiveTool(id)}
-                  className={`flex w-16 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-card hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="size-[18px]" />
-                  <span className="text-[9px] font-semibold leading-none">{label}</span>
-                </button>
+                <div key={id} className="relative group w-full flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTool(id)}
+                    className={`flex w-16 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-card hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="size-[18px]" />
+                    <span className="text-[9px] font-semibold leading-none">{label}</span>
+                  </button>
+                  {/* Tooltip lateral */}
+                  <div className="pointer-events-none absolute left-full top-0 z-50 ml-2 hidden group-hover:flex flex-col min-w-[180px] rounded-xl border border-border bg-background shadow-xl overflow-hidden">
+                    <div className="px-3 py-2 border-b border-border/50 bg-muted/40">
+                      <p className="text-[10px] font-black text-foreground">{SIDEBAR_DESCRIPTIONS[id]}</p>
+                    </div>
+                    <ul className="flex flex-col gap-0 py-1">
+                      {tips.map((tip, i) => (
+                        <li key={i} className="flex items-start gap-1.5 px-3 py-1">
+                          <span className="mt-[3px] size-1 shrink-0 rounded-full bg-primary/50" />
+                          <span className="text-[9px] text-muted-foreground leading-snug">{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               );
             })}
+            {/* Separador + botão Ctrl+K */}
+            <div className="mt-auto pt-2 border-t border-border/40 w-full flex justify-center">
+              <button
+                type="button"
+                onClick={() => { setCmdOpen(true); setCmdQuery(""); }}
+                className="flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-muted-foreground hover:bg-card hover:text-foreground transition w-16"
+                title="Busca rápida (Ctrl+K)"
+              >
+                <Search className="size-[18px]" />
+                <span className="text-[9px] font-semibold leading-none">Buscar</span>
+              </button>
+            </div>
           </aside>
 
           <main className="flex min-w-0 flex-1 flex-col bg-[var(--workspace)] overflow-hidden">
@@ -2113,6 +2156,83 @@ export function App() {
             </div>
           </div>
         )}
+
+        {/* ── Command Palette (Ctrl+K) ── */}
+        {cmdOpen && (() => {
+          type Cmd = { id: string; label: string; desc: string; icon: React.ElementType; action: () => void; keywords: string };
+          const COMMANDS: Cmd[] = [
+            { id: "import",    label: "Importar arquivo",            desc: "Adicionar vídeo, áudio ou imagem ao projeto",    icon: Upload,   action: () => handleImport(),                         keywords: "importar video audio imagem arquivo abrir" },
+            { id: "open",      label: "Abrir projeto (.v4)",         desc: "Carregar um projeto salvo anteriormente",        icon: FolderOpen, action: () => handleMenuCommand("open-project"),    keywords: "abrir projeto carregar v4" },
+            { id: "save",      label: "Salvar projeto",              desc: "Salvar como arquivo .v4 portável",               icon: Download, action: () => handleMenuCommand("save-project"),        keywords: "salvar projeto exportar v4" },
+            { id: "clean-cut", label: "Corte Limpo — remover silêncios", desc: "Detecta pausas e gaguejos automaticamente", icon: Zap,      action: () => { setActiveTool("ai"); setCmdOpen(false); }, keywords: "corte limpo silencio pausa remover cortar ai" },
+            { id: "captions",  label: "Gerar legendas automáticas",  desc: "Transcreve a fala em texto (Whisper AI)",        icon: Captions, action: () => { setActiveTool("captions"); setCmdOpen(false); }, keywords: "legenda transcricao texto ia whisper subtitle" },
+            { id: "stems",     label: "Separar voz e música",        desc: "Isola vocais e instrumental em faixas separadas",icon: Mic,      action: () => { setActiveTool("audio"); setCmdOpen(false); }, keywords: "voz musica instrumental separar stems audio" },
+            { id: "effects",   label: "Efeitos visuais",             desc: "Brilho, contraste, cinema, neon e mais 10",      icon: Sparkles, action: () => { setActiveTool("effects"); setCmdOpen(false); }, keywords: "efeito visual filtro brilho contraste cinema neon" },
+            { id: "presets",   label: "Presets e LUTs",              desc: "Filtros de cor: Adobe, DaVinci, CapCut",         icon: Layers,   action: () => { setActiveTool("presets"); setCmdOpen(false); }, keywords: "preset lut filtro cor adobe davinci capcut" },
+            { id: "drive",     label: "Google Drive",                desc: "Salvar e abrir projetos na nuvem",               icon: Cloud,    action: () => { setDialog("drive"); setCmdOpen(false); }, keywords: "google drive nuvem cloud salvar abrir" },
+            { id: "export-mp4",label: "Exportar vídeo (MP4)",        desc: "Renderizar o projeto final em MP4",              icon: Download, action: () => { setActiveTool("settings"); setCmdOpen(false); }, keywords: "exportar mp4 renderizar video final" },
+            { id: "split",     label: "Cortar no playhead",          desc: "Divide o clipe na posição atual (Ctrl+/)",       icon: Scissors, action: () => { window.dispatchEvent(new CustomEvent("timeline:split")); setCmdOpen(false); }, keywords: "cortar dividir split clipe playhead" },
+            { id: "media-lib", label: "Biblioteca de mídia",         desc: "Ver e gerenciar arquivos importados",            icon: Film,     action: () => { setActiveTool("media"); setCmdOpen(false); }, keywords: "biblioteca midia arquivo video imagem" },
+            { id: "settings",  label: "Configurações",               desc: "Export, qualidade, atalhos",                    icon: Settings, action: () => { setActiveTool("settings"); setCmdOpen(false); }, keywords: "configuracao config qualidade resolucao atalho" },
+          ];
+          const q = cmdQuery.toLowerCase().trim();
+          const filtered = q
+            ? COMMANDS.filter(c => c.label.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q) || c.keywords.includes(q))
+            : COMMANDS;
+
+          return (
+            <div className="absolute inset-0 z-[100] flex items-start justify-center pt-[10vh] bg-black/50 backdrop-blur-sm" onClick={() => setCmdOpen(false)}>
+              <div className="w-[520px] max-h-[70vh] rounded-2xl border border-border bg-background shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                {/* Search bar */}
+                <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
+                  <Search className="size-4 text-muted-foreground shrink-0" />
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="O que você quer fazer?"
+                    value={cmdQuery}
+                    onChange={e => setCmdQuery(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && filtered[0]) { filtered[0].action(); } if (e.key === "Escape") setCmdOpen(false); }}
+                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 text-foreground"
+                  />
+                  <kbd className="hidden sm:flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground font-mono shrink-0">ESC</kbd>
+                </div>
+                {/* Results */}
+                <div className="overflow-y-auto">
+                  {filtered.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum resultado para "{cmdQuery}"</div>
+                  ) : (
+                    <div className="p-1.5 flex flex-col gap-0.5">
+                      {filtered.map((cmd, i) => (
+                        <button
+                          key={cmd.id}
+                          type="button"
+                          onClick={cmd.action}
+                          className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition w-full ${i === 0 && q ? "bg-primary/10 border border-primary/20" : "hover:bg-muted"}`}
+                        >
+                          <div className={`grid size-8 shrink-0 place-items-center rounded-lg border ${i === 0 && q ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground"}`}>
+                            <cmd.icon className="size-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[12px] font-semibold text-foreground leading-snug">{cmd.label}</p>
+                            <p className="text-[10px] text-muted-foreground leading-snug truncate">{cmd.desc}</p>
+                          </div>
+                          {i === 0 && q && (
+                            <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground font-mono">↵ Enter</kbd>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Footer */}
+                <div className="border-t border-border px-4 py-2 flex items-center gap-4">
+                  <span className="text-[9px] text-muted-foreground/50">Ctrl+K para abrir · Esc para fechar</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Modal: Drive (quando chamado pelo menu) ── */}
         {dialog === "drive" && (
