@@ -117,9 +117,11 @@ export function App() {
   const [captionColor, setCaptionColor] = useState("#ffffff");
   const [captionBgColor, setCaptionBgColor] = useState("#000000");
   const [captionBgOpacity, setCaptionBgOpacity] = useState(80);
+  const [captionBgPadding, setCaptionBgPadding] = useState(8);
   const [captionShadow, setCaptionShadow] = useState(false);
   const [captionOutline, setCaptionOutline] = useState(false);
   const [captionExportEnabled, setCaptionExportEnabled] = useState(true);
+  const [previewQuality, setPreviewQuality] = useState<"auto" | "low">("auto");
   const [captionChrome, setCaptionChrome] = useState<"reels" | "tiktok" | "story" | "youtube" | "off">("reels");
   const [selectedCopyId, setSelectedCopyId] = useState<string | null>(null);
   const [whisperModel, setWhisperModel] = useState("small");
@@ -194,8 +196,15 @@ export function App() {
       return s;
     });
 
-    setVisualCopies(repositioned);
-  }, [assets, setVisualCopies]);
+    // Preserva clipes de outros assets — só substitui os do asset atual
+    const others = visualCopies.filter((c) => c.assetId !== assetId);
+    const own = visualCopies.filter((c) => c.assetId === assetId);
+    const insertAt = own.length > 0
+      ? Math.min(...own.map((c) => c.startTime ?? 0))
+      : 0;
+    const shifted = repositioned.map((s) => ({ ...s, startTime: (s.startTime ?? 0) + insertAt }));
+    setVisualCopies([...others, ...shifted].sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0)));
+  }, [assets, visualCopies, setVisualCopies]);
 
   // ── Drive: snapshot do projeto ───────────────────────────────────────────
   const getProjectSnapshot = useCallback(() => ({
@@ -212,13 +221,14 @@ export function App() {
       color: captionColor,
       bgColor: captionBgColor,
       bgOpacity: captionBgOpacity,
+      bgPadding: captionBgPadding,
       shadow: captionShadow,
       outline: captionOutline,
       captionY,
     },
     activeEffect,
     activeEffectCss,
-  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY, activeEffect, activeEffectCss]);
+  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionBgPadding, captionShadow, captionOutline, captionY, activeEffect, activeEffectCss]);
 
   // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
   const activeMediaContext = useMemo(() => {
@@ -254,6 +264,7 @@ export function App() {
       if (cs.color) setCaptionColor(cs.color as string);
       if (cs.bgColor) setCaptionBgColor(cs.bgColor as string);
       if (cs.bgOpacity !== undefined) setCaptionBgOpacity(cs.bgOpacity as number);
+      if (cs.bgPadding !== undefined) setCaptionBgPadding(cs.bgPadding as number);
       if (cs.bold !== undefined) setCaptionBold(cs.bold as boolean);
       if (cs.italic !== undefined) setCaptionItalic(cs.italic as boolean);
       if (cs.shadow !== undefined) setCaptionShadow(cs.shadow as boolean);
@@ -853,7 +864,8 @@ export function App() {
                       <video
                         ref={videoRef}
                         src={previewUrl}
-                        className="absolute inset-0 h-full w-full object-contain transition-[filter] duration-200"
+                        className="absolute object-contain transition-[filter] duration-200"
+                        style={previewQuality === "low" ? { top: 0, left: 0, width: "25%", height: "25%", transformOrigin: "top left", transform: "scale(4)", imageRendering: "pixelated" } : { inset: 0, width: "100%", height: "100%" }}
                         style={(() => {
                           const activeClip = visualCopies.find(c => {
                             const s = c.startTime ?? 0;
@@ -934,10 +946,12 @@ export function App() {
                             window.addEventListener("pointerup", up);
                           }}
                         >
-                          <div className="rounded-md px-3 py-1.5 text-center" style={{
+                          <div className="rounded-md text-center" style={{
                             backgroundColor: captionBgOpacity > 0
                               ? `${captionBgColor}${Math.round(captionBgOpacity * 2.55).toString(16).padStart(2, "0")}`
                               : "transparent",
+                            padding: captionBgOpacity > 0 ? `${Math.round(captionBgPadding * 0.3)}px ${captionBgPadding}px` : "0",
+                            borderRadius: captionBgOpacity > 0 ? `${Math.round(captionBgPadding * 0.4)}px` : undefined,
                           }}>
                             {[line1, line2].filter(Boolean).map((line, i) => (
                               <p key={i} className="leading-snug" style={{
@@ -1283,6 +1297,14 @@ export function App() {
                       <button type="button" onClick={() => setVideoTransform({ x: 0, y: 0, scale: 100 })} className="text-[8px] text-muted-foreground hover:text-foreground" title="Reset posicao">
                         Reset
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewQuality(q => q === "auto" ? "low" : "auto")}
+                        className={`rounded px-1.5 py-0.5 text-[8px] font-bold transition ${previewQuality === "low" ? "bg-amber-500/20 text-amber-400 border border-amber-500/40" : "text-muted-foreground hover:text-foreground border border-transparent"}`}
+                        title="Alternar qualidade do preview"
+                      >
+                        {previewQuality === "low" ? "LOW" : "HD"}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1298,97 +1320,118 @@ export function App() {
                     if (!selCopy) return null;
                     const update = (patch: Partial<typeof selCopy>) =>
                       setVisualCopies(prev => prev.map(c => c.id === selCopy.id ? { ...c, ...patch } : c));
+                    const selAsset = assets.find(a => a.id === selCopy.assetId);
                     return (
-                      <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 flex flex-col gap-2 mb-3">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[9px] font-bold text-primary uppercase tracking-wider">Elemento selecionado</p>
+                      <div className="flex flex-col gap-2 mb-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            <p className="text-[10px] font-bold text-foreground truncate max-w-[140px]">{selAsset?.name ?? "Clipe"}</p>
+                          </div>
                           <button type="button" onClick={() => setSelectedCopyId(null)}
-                            className="grid size-4 place-items-center rounded text-muted-foreground hover:text-foreground">
+                            className="grid size-5 place-items-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition">
                             <X className="size-3" />
                           </button>
                         </div>
 
-                        {/* Opacidade */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Opacidade</label>
-                          <input type="range" min={0} max={100} step={1} value={selCopy.opacity ?? 100}
-                            onChange={e => update({ opacity: Number(e.target.value) })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{selCopy.opacity ?? 100}%</span>
+                        {/* Grupo: Imagem */}
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="px-3 py-2 border-b border-border/50 bg-muted/30">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Imagem</span>
+                          </div>
+                          <div className="flex flex-col gap-3 px-3 py-2.5">
+                            {[
+                              { label: "Opacidade", value: selCopy.opacity ?? 100, min: 0, max: 100, step: 1, unit: "%", key: "opacity" as const },
+                              { label: "Brilho", value: selCopy.brightness ?? 100, min: 0, max: 200, step: 5, unit: "%", key: "brightness" as const },
+                            ].map(({ label, value, min, max, step, unit, key }) => (
+                              <div key={key} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] text-muted-foreground font-medium">{label}</span>
+                                  <span className="text-[9px] font-bold tabular-nums text-foreground">{value}{unit}</span>
+                                </div>
+                                <input type="range" min={min} max={max} step={step} value={value}
+                                  onChange={e => update({ [key]: Number(e.target.value) })}
+                                  className="w-full h-1.5 accent-primary rounded-full" />
+                              </div>
+                            ))}
+                          </div>
                         </div>
 
-                        {/* Volume */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Volume</label>
-                          <input type="range" min={0} max={200} step={5} value={selCopy.volume ?? 100}
-                            onChange={e => update({ volume: Number(e.target.value) })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{selCopy.volume ?? 100}%</span>
+                        {/* Grupo: Áudio */}
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="px-3 py-2 border-b border-border/50 bg-muted/30">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Áudio &amp; Velocidade</span>
+                          </div>
+                          <div className="flex flex-col gap-3 px-3 py-2.5">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] text-muted-foreground font-medium">Volume</span>
+                                <span className="text-[9px] font-bold tabular-nums text-foreground">{selCopy.volume ?? 100}%</span>
+                              </div>
+                              <input type="range" min={0} max={200} step={5} value={selCopy.volume ?? 100}
+                                onChange={e => update({ volume: Number(e.target.value) })}
+                                className="w-full h-1.5 accent-primary rounded-full" />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[9px] text-muted-foreground font-medium">Velocidade</span>
+                                <span className="text-[9px] font-bold tabular-nums text-foreground">{Math.round((selCopy.speed ?? 1) * 100)}%</span>
+                              </div>
+                              <input type="range" min={25} max={400} step={25} value={Math.round((selCopy.speed ?? 1) * 100)}
+                                onChange={e => update({ speed: Number(e.target.value) / 100 })}
+                                className="w-full h-1.5 accent-primary rounded-full" />
+                              <div className="flex gap-1 mt-0.5">
+                                {[25,50,75,100,150,200].map(v => (
+                                  <button key={v} type="button"
+                                    onClick={() => update({ speed: v / 100 })}
+                                    className={`flex-1 rounded py-0.5 text-[7px] font-bold transition ${Math.round((selCopy.speed ?? 1) * 100) === v ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>
+                                    {v === 100 ? "1×" : v < 100 ? `${v/100}×` : `${v/100}×`}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Velocidade */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Velocidade</label>
-                          <input type="range" min={25} max={400} step={25} value={Math.round((selCopy.speed ?? 1) * 100)}
-                            onChange={e => update({ speed: Number(e.target.value) / 100 })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{Math.round((selCopy.speed ?? 1) * 100)}%</span>
+                        {/* Grupo: Posição */}
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="px-3 py-2 border-b border-border/50 bg-muted/30">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Posição</span>
+                          </div>
+                          <div className="flex flex-col gap-3 px-3 py-2.5">
+                            {[
+                              { label: "Escala", value: selCopy.scale ?? 100, min: 10, max: 200, step: 5, unit: "%", key: "scale" as const },
+                              { label: "Posição X", value: selCopy.posX ?? 0, min: -100, max: 100, step: 1, unit: "%", key: "posX" as const },
+                              { label: "Posição Y", value: selCopy.posY ?? 0, min: -100, max: 100, step: 1, unit: "%", key: "posY" as const },
+                            ].map(({ label, value, min, max, step, unit, key }) => (
+                              <div key={key} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] text-muted-foreground font-medium">{label}</span>
+                                  <span className="text-[9px] font-bold tabular-nums text-foreground">{value}{unit}</span>
+                                </div>
+                                <input type="range" min={min} max={max} step={step} value={value}
+                                  onChange={e => update({ [key]: Number(e.target.value) })}
+                                  className="w-full h-1.5 accent-primary rounded-full" />
+                              </div>
+                            ))}
+                            <div className="grid grid-cols-3 gap-1">
+                              <button type="button" onClick={() => update({ posX: -50, scale: 50 })}
+                                className="rounded-lg border border-border py-1.5 text-[8px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-muted/50 transition text-center">
+                                ◧ Esq.
+                              </button>
+                              <button type="button" onClick={() => update({ posX: 0, posY: 0, scale: 100 })}
+                                className="rounded-lg border border-border py-1.5 text-[8px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-muted/50 transition text-center">
+                                ⛶ Full
+                              </button>
+                              <button type="button" onClick={() => update({ posX: 50, scale: 50 })}
+                                className="rounded-lg border border-border py-1.5 text-[8px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-muted/50 transition text-center">
+                                ◨ Dir.
+                              </button>
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Brilho */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Brilho</label>
-                          <input type="range" min={0} max={200} step={5} value={selCopy.brightness ?? 100}
-                            onChange={e => update({ brightness: Number(e.target.value) })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{selCopy.brightness ?? 100}%</span>
-                        </div>
-
-                        <div className="border-t border-border/40 my-0.5" />
-                        <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Posição / Tela dividida</p>
-
-                        {/* Escala */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Escala</label>
-                          <input type="range" min={10} max={200} step={5} value={selCopy.scale ?? 100}
-                            onChange={e => update({ scale: Number(e.target.value) })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{selCopy.scale ?? 100}%</span>
-                        </div>
-
-                        {/* Pos X */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Pos X</label>
-                          <input type="range" min={-100} max={100} step={1} value={selCopy.posX ?? 0}
-                            onChange={e => update({ posX: Number(e.target.value) })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{selCopy.posX ?? 0}%</span>
-                        </div>
-
-                        {/* Pos Y */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[9px] text-muted-foreground w-12 shrink-0">Pos Y</label>
-                          <input type="range" min={-100} max={100} step={1} value={selCopy.posY ?? 0}
-                            onChange={e => update({ posY: Number(e.target.value) })}
-                            className="flex-1 h-1 accent-primary" />
-                          <span className="text-[9px] tabular-nums w-7">{selCopy.posY ?? 0}%</span>
-                        </div>
-
-                        {/* Atalhos tela dividida */}
-                        <div className="flex gap-1.5 flex-wrap">
-                          <button type="button" onClick={() => update({ posX: -50, scale: 50 })}
-                            className="rounded border border-border px-2 py-0.5 text-[8px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition">
-                            ◧ Esquerda
-                          </button>
-                          <button type="button" onClick={() => update({ posX: 50, scale: 50 })}
-                            className="rounded border border-border px-2 py-0.5 text-[8px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition">
-                            ◨ Direita
-                          </button>
-                          <button type="button" onClick={() => update({ posX: 0, posY: 0, scale: 100 })}
-                            className="rounded border border-border px-2 py-0.5 text-[8px] text-muted-foreground hover:text-foreground hover:border-primary/40 transition">
-                            ⛶ Cheio
-                          </button>
-                        </div>
                       </div>
                     );
                   })()}
@@ -1607,20 +1650,34 @@ export function App() {
                         <span className="text-[9px] text-muted-foreground w-7 tabular-nums">{captionBgOpacity}%</span>
                       </div>
 
+                      {/* Padding do fundo */}
+                      {captionBgOpacity > 0 && (
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] text-muted-foreground w-9 shrink-0">Tamanho</label>
+                          <input type="range" min={0} max={32} step={2} value={captionBgPadding}
+                            onChange={(e) => setCaptionBgPadding(Number(e.target.value))}
+                            className="flex-1 h-1 accent-primary" />
+                          <span className="text-[9px] text-muted-foreground w-7 tabular-nums">{captionBgPadding}px</span>
+                        </div>
+                      )}
+
                       {/* Separador */}
                       <div className="border-t border-border/40 my-0.5" />
                       <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Efeitos</p>
 
-                      {/* Sombra / Contorno */}
+                      {/* Sombra e Contorno — independentes */}
                       <div className="flex items-center gap-2">
-                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Efeito</label>
-                        <button type="button" onClick={() => { setCaptionShadow(v => !v); setCaptionOutline(false); }}
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Sombra</label>
+                        <button type="button" onClick={() => setCaptionShadow(v => !v)}
                           className={`rounded px-2 py-0.5 text-[9px] transition ${captionShadow ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
-                          Sombra
+                          {captionShadow ? "On" : "Off"}
                         </button>
-                        <button type="button" onClick={() => { setCaptionOutline(v => !v); setCaptionShadow(false); }}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[9px] text-muted-foreground w-9 shrink-0">Contorno</label>
+                        <button type="button" onClick={() => setCaptionOutline(v => !v)}
                           className={`rounded px-2 py-0.5 text-[9px] transition ${captionOutline ? "bg-primary text-white" : "border border-border text-muted-foreground hover:text-foreground"}`}>
-                          Contorno
+                          {captionOutline ? "On" : "Off"}
                         </button>
                       </div>
 
