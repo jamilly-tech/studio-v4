@@ -492,15 +492,15 @@ export function Timeline({
             </div>
           ))}
 
-          {/* Caption track */}
-          {captionSegments && captionSegments.length > 0 && (
-            <div className="relative border-b border-border/15" style={{ height: trackH }}>
-              <div className="absolute left-0 top-0 w-14 z-10 flex flex-col items-center justify-center gap-0.5 bg-background border-r border-border" style={{ height: trackH }}>
-                <Captions className="size-3 text-violet-400/70" />
-                <span className="text-[7px] font-bold text-muted-foreground/60">CC</span>
-              </div>
-              <div className="ml-14 relative h-full">
-                {captionSegments.map((seg) => {
+          {/* Caption track — sempre visível */}
+          <div className="relative border-b border-border/15" style={{ height: trackH }}>
+            <div className="absolute left-0 top-0 w-14 z-10 flex flex-col items-center justify-center gap-0.5 bg-background border-r border-border" style={{ height: trackH }}>
+              <Captions className="size-3 text-violet-400/70" />
+              <span className="text-[7px] font-bold text-muted-foreground/60">CC</span>
+            </div>
+            <div className="ml-14 relative h-full">
+              {captionSegments && captionSegments.length > 0 ? (
+                captionSegments.map((seg) => {
                   const left = seg.start * pxPerSec;
                   const width = Math.max(24, (seg.end - seg.start) * pxPerSec);
                   const isActive = currentTime >= seg.start && currentTime <= seg.end;
@@ -521,10 +521,14 @@ export function Timeline({
                       </span>
                     </div>
                   );
-                })}
-              </div>
+                })
+              ) : (
+                <div className="absolute inset-0 flex items-center px-3">
+                  <span className="text-[8px] text-muted-foreground/30 italic">Gere legendas para ver os blocos aqui</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Playhead */}
           <div

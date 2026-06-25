@@ -120,6 +120,7 @@ export function App() {
   const [captionShadow, setCaptionShadow] = useState(false);
   const [captionOutline, setCaptionOutline] = useState(false);
   const [captionExportEnabled, setCaptionExportEnabled] = useState(true);
+  const [captionChrome, setCaptionChrome] = useState<"reels" | "tiktok" | "story" | "youtube" | "off">("reels");
   const [selectedCopyId, setSelectedCopyId] = useState<string | null>(null);
   const [whisperModel, setWhisperModel] = useState("small");
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -955,10 +956,10 @@ export function App() {
 
                     {/* Social chrome overlay — visível apenas no painel Legendas */}
                     {activeTool === "captions" && (() => {
-                      const fmt = activeFormat.id;
+                      const fmt = captionChrome;
+                      if (fmt === "off") return null;
                       const isVertical = fmt === "reels" || fmt === "tiktok" || fmt === "story";
                       const isYT = fmt === "youtube";
-                      if (!isVertical && !isYT) return null;
                       return (
                         <div className="absolute inset-0 pointer-events-none select-none" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
                           {isVertical && (
@@ -1076,8 +1077,8 @@ export function App() {
                           )}
 
                           {/* Label do chrome */}
-                          <div className="absolute top-1 right-1 rounded bg-black/50 px-1.5 py-0.5" style={{ fontSize: "7px", color: "rgba(255,255,255,0.5)" }}>
-                            {activeFormat.label} · chrome preview
+                          <div className="absolute top-1 right-1 rounded bg-black/60 px-1.5 py-0.5" style={{ fontSize: "7px", color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>
+                            {captionChrome === "reels" ? "Instagram Reels" : captionChrome === "tiktok" ? "TikTok" : captionChrome === "story" ? "Story" : "YouTube"} · preview
                           </div>
                         </div>
                       );
@@ -1088,6 +1089,7 @@ export function App() {
                       <div
                         className="absolute inset-0 cursor-move"
                         onPointerDown={(e) => {
+                          if ((e.target as HTMLElement).dataset.handle) return;
                           const startX = e.clientX;
                           const startY = e.clientY;
                           const orig = { ...videoTransform };
@@ -1103,8 +1105,44 @@ export function App() {
                         }}
                       >
                         <div className="absolute inset-2 border-2 border-dashed border-white/30 rounded pointer-events-none" />
-                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/70 px-2 py-0.5">
-                          <span className="text-[9px] text-white/70 font-mono">{videoTransform.scale}% · arraste para mover · scroll para zoom</span>
+                        {/* Resize handles — cantos e lados */}
+                        {([
+                          { pos: "top-0 left-0 -translate-x-1/2 -translate-y-1/2", cursor: "nwse-resize", dx: -1, dy: -1 },
+                          { pos: "top-0 left-1/2 -translate-x-1/2 -translate-y-1/2", cursor: "ns-resize", dx: 0, dy: -1 },
+                          { pos: "top-0 right-0 translate-x-1/2 -translate-y-1/2", cursor: "nesw-resize", dx: 1, dy: -1 },
+                          { pos: "top-1/2 right-0 translate-x-1/2 -translate-y-1/2", cursor: "ew-resize", dx: 1, dy: 0 },
+                          { pos: "bottom-0 right-0 translate-x-1/2 translate-y-1/2", cursor: "nwse-resize", dx: 1, dy: 1 },
+                          { pos: "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2", cursor: "ns-resize", dx: 0, dy: 1 },
+                          { pos: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2", cursor: "nesw-resize", dx: -1, dy: 1 },
+                          { pos: "top-1/2 left-0 -translate-x-1/2 -translate-y-1/2", cursor: "ew-resize", dx: -1, dy: 0 },
+                        ] as const).map(({ pos, cursor, dx, dy }, i) => (
+                          <div
+                            key={i}
+                            data-handle="1"
+                            className={`absolute w-3 h-3 rounded-sm bg-white border border-primary/80 shadow-md ${pos}`}
+                            style={{ cursor, zIndex: 10 }}
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              const startX = e.clientX;
+                              const startY = e.clientY;
+                              const origScale = videoTransform.scale;
+                              const move = (ev: PointerEvent) => {
+                                const deltaX = (ev.clientX - startX) * dx;
+                                const deltaY = (ev.clientY - startY) * dy;
+                                const delta = dx !== 0 ? deltaX : deltaY;
+                                setVideoTransform((prev) => ({
+                                  ...prev,
+                                  scale: Math.max(10, Math.min(300, origScale + delta * 0.5)),
+                                }));
+                              };
+                              const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+                              window.addEventListener("pointermove", move);
+                              window.addEventListener("pointerup", up);
+                            }}
+                          />
+                        ))}
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/70 px-2 py-0.5 pointer-events-none">
+                          <span className="text-[9px] text-white/70 font-mono">{videoTransform.scale}% · arraste para mover · cantos para escalar</span>
                         </div>
                       </div>
                     )}
@@ -1375,6 +1413,23 @@ export function App() {
                       >
                         <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${captionExportEnabled ? "translate-x-4" : "translate-x-0"}`} />
                       </button>
+                    </div>
+
+                    {/* Seletor de chrome social */}
+                    <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2">
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Preview de Rede</p>
+                      <div className="grid grid-cols-5 gap-1">
+                        {([ ["reels", "Reels"], ["tiktok", "TikTok"], ["story", "Story"], ["youtube", "YouTube"], ["off", "Off"] ] as const).map(([id, label]) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setCaptionChrome(id)}
+                            className={`rounded text-[8px] font-bold py-1 px-0.5 transition border ${captionChrome === id ? "bg-primary border-primary text-white" : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     {/* Presets de formato */}
