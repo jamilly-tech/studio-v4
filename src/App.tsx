@@ -75,6 +75,14 @@ const sidebarTools: { id: ToolId; label: string; icon: typeof Film }[] = [
   { id: "settings", label: "Config", icon: Settings },
 ];
 
+const CAPTION_PRESETS = [
+  { id: "limpo",    label: "Limpo",    font: "Arial",    size: 20, bold: false, italic: false, color: "#ffffff", bgColor: "#000000", bgOpacity: 65, shadow: false, outline: false, y: 12 },
+  { id: "impacto",  label: "Impacto",  font: "Impact",   size: 26, bold: true,  italic: false, color: "#ffff00", bgColor: "#000000", bgOpacity: 0,  shadow: false, outline: true,  y: 12 },
+  { id: "cinema",   label: "Cinema",   font: "Georgia",  size: 18, bold: false, italic: true,  color: "#ffffff", bgColor: "#000000", bgOpacity: 80, shadow: true,  outline: false, y: 8  },
+  { id: "neon",     label: "Neon",     font: "Verdana",  size: 18, bold: true,  italic: false, color: "#00ff88", bgColor: "#000000", bgOpacity: 0,  shadow: true,  outline: false, y: 12 },
+  { id: "escuro",   label: "Escuro",   font: "Helvetica",size: 18, bold: false, italic: false, color: "#e2e8f0", bgColor: "#0f172a", bgOpacity: 92, shadow: false, outline: false, y: 12 },
+];
+
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [screen, setScreen] = useState<AppScreen>("home");
@@ -111,6 +119,7 @@ export function App() {
   const [captionBgOpacity, setCaptionBgOpacity] = useState(80);
   const [captionShadow, setCaptionShadow] = useState(false);
   const [captionOutline, setCaptionOutline] = useState(false);
+  const [captionExportEnabled, setCaptionExportEnabled] = useState(true);
   const [selectedCopyId, setSelectedCopyId] = useState<string | null>(null);
   const [whisperModel, setWhisperModel] = useState("small");
   const [wmRegion, setWmRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -193,6 +202,7 @@ export function App() {
     assets: assets.map((a) => ({ ...a, file: undefined })),
     visualCopies,
     captionSegments,
+    captionExportEnabled,
     captionStyle: {
       fontFamily: captionFont,
       fontSize: captionFontSize,
@@ -205,7 +215,7 @@ export function App() {
       outline: captionOutline,
       captionY,
     },
-  }), [projectName, assets, visualCopies, captionSegments, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY]);
+  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY]);
 
   // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
   const activeMediaContext = useMemo(() => {
@@ -247,6 +257,7 @@ export function App() {
       if (cs.outline !== undefined) setCaptionOutline(cs.outline as boolean);
       if (cs.captionY !== undefined) setCaptionY(cs.captionY as number);
     }
+    if (data.captionExportEnabled !== undefined) setCaptionExportEnabled(data.captionExportEnabled as boolean);
 
     if (data.assets && Array.isArray(data.assets)) {
       // Re-registra caminhos no proxy do servidor local e reconstrói URLs
@@ -1183,6 +1194,112 @@ export function App() {
                     />
                   ) : activeTool === "captions" ? (
                     <>
+                    {/* Toggle legendas no vídeo */}
+                    <div className="rounded-lg border border-border bg-card/50 p-2.5 flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-foreground">Legendas no vídeo</span>
+                      <button
+                        type="button"
+                        onClick={() => setCaptionExportEnabled(v => !v)}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${captionExportEnabled ? "bg-primary" : "bg-muted"}`}
+                        title={captionExportEnabled ? "Clique para desativar legendas no export" : "Clique para ativar legendas no export"}
+                      >
+                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${captionExportEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+
+                    {/* Presets de formato */}
+                    <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2 mb-1">
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Presets de Formato</p>
+                      <div className="grid grid-cols-5 gap-1">
+                        {CAPTION_PRESETS.map(preset => {
+                          const bgOpacityPct = preset.bgOpacity / 100;
+                          const bgRgb = preset.bgColor === "#000000" ? "0,0,0" : preset.bgColor === "#0f172a" ? "15,23,42" : "0,0,0";
+                          const textShadow = preset.shadow ? `0 1px 3px rgba(0,0,0,0.9)` : preset.outline ? `0 0 2px #000, 0 0 2px #000` : "none";
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                setCaptionFont(preset.font);
+                                setCaptionFontSize(preset.size);
+                                setCaptionBold(preset.bold);
+                                setCaptionItalic(preset.italic);
+                                setCaptionColor(preset.color);
+                                setCaptionBgColor(preset.bgColor);
+                                setCaptionBgOpacity(preset.bgOpacity);
+                                setCaptionShadow(preset.shadow);
+                                setCaptionOutline(preset.outline);
+                                setCaptionY(preset.y);
+                              }}
+                              className="flex flex-col items-center gap-1 rounded border border-border hover:border-primary/60 bg-background p-1 transition group"
+                              title={preset.label}
+                            >
+                              {/* Mini preview 16:9 */}
+                              <div
+                                className="w-full rounded overflow-hidden flex items-end justify-center"
+                                style={{ aspectRatio: "16/9", background: "#1a1a2e" }}
+                              >
+                                <div
+                                  className="w-full px-1 py-0.5 text-center"
+                                  style={{
+                                    fontFamily: preset.font,
+                                    fontSize: "5px",
+                                    fontWeight: preset.bold ? "bold" : "normal",
+                                    fontStyle: preset.italic ? "italic" : "normal",
+                                    color: preset.color,
+                                    backgroundColor: `rgba(${bgRgb},${bgOpacityPct})`,
+                                    textShadow,
+                                    lineHeight: 1.2,
+                                    letterSpacing: "0.01em",
+                                  }}
+                                >
+                                  Exemplo
+                                </div>
+                              </div>
+                              <span className="text-[8px] text-muted-foreground group-hover:text-foreground transition truncate w-full text-center">{preset.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Live preview com estilo atual */}
+                    <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-1.5 mb-1">
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Preview</p>
+                      <div
+                        className="w-full rounded overflow-hidden flex items-end justify-center"
+                        style={{ aspectRatio: "16/9", background: "#111827" }}
+                      >
+                        {captionExportEnabled ? (
+                          <div
+                            className="w-full px-2 py-1 text-center"
+                            style={{
+                              fontFamily: captionFont,
+                              fontSize: `${Math.max(8, Math.round(captionFontSize * 0.7))}px`,
+                              fontWeight: captionBold ? "bold" : "normal",
+                              fontStyle: captionItalic ? "italic" : "normal",
+                              color: captionColor,
+                              backgroundColor: captionBgOpacity > 0
+                                ? `rgba(0,0,0,${captionBgOpacity / 100})`
+                                : "transparent",
+                              textShadow: captionShadow
+                                ? "0 1px 4px rgba(0,0,0,0.9)"
+                                : captionOutline
+                                ? "0 0 3px #000, 0 0 3px #000, 0 0 3px #000"
+                                : "none",
+                              marginBottom: `${Math.round((captionY / 100) * 30)}px`,
+                            }}
+                          >
+                            Exemplo de legenda
+                          </div>
+                        ) : (
+                          <div className="w-full py-2 text-center text-[9px] text-muted-foreground/50">
+                            Legendas desativadas
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Estilo da legenda — painel completo */}
                     <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2 mb-1">
                       <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Texto</p>
@@ -1502,7 +1619,7 @@ export function App() {
                 if (!outputPath) { setExportProgress(null); return; }
                 await window.studioV4?.exportVideo?.({
                   clips, outputPath, resolution: exportResolution,
-                  captionsASS: captionSegments.length > 0
+                  captionsASS: captionExportEnabled && captionSegments.length > 0
                     ? serializeCaptionsToASS(captionSegments, {
                         fontFamily: captionFont, fontSize: captionFontSize,
                         bold: captionBold, italic: captionItalic,
