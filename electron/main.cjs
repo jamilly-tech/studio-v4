@@ -1060,6 +1060,10 @@ function handleOAuthCallback(requestUrl, response) {
   response.end('<!DOCTYPE html><html><body style="font-family:sans-serif;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><p>Autenticado. Volte ao Studio V4.</p></body></html>');
 }
 
+ipcMain.handle("google-auth-configured", () => ({
+  configured: Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+}));
+
 ipcMain.handle("google-auth", async () => {
   if (pendingOAuth) { pendingOAuth.reject(new Error("cancelled")); pendingOAuth = null; }
 

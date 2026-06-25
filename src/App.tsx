@@ -215,7 +215,9 @@ export function App() {
       outline: captionOutline,
       captionY,
     },
-  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY]);
+    activeEffect,
+    activeEffectCss,
+  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionShadow, captionOutline, captionY, activeEffect, activeEffectCss]);
 
   // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
   const activeMediaContext = useMemo(() => {
@@ -258,17 +260,26 @@ export function App() {
       if (cs.captionY !== undefined) setCaptionY(cs.captionY as number);
     }
     if (data.captionExportEnabled !== undefined) setCaptionExportEnabled(data.captionExportEnabled as boolean);
+    if (data.activeEffect) setActiveEffect(data.activeEffect as string);
+    if (data.activeEffectCss) setActiveEffectCss(data.activeEffectCss as string);
 
     if (data.assets && Array.isArray(data.assets)) {
-      // Re-registra caminhos no proxy do servidor local e reconstrói URLs
+      const missing: string[] = [];
       const restored = await Promise.all(
         (data.assets as ImportedAsset[]).map(async (a) => {
           if (!a.filePath) return a;
           const reg = await window.studioV4?.media?.registerProxy?.(a.filePath);
           if (reg?.url) return { ...a, url: reg.url, previewUrl: reg.url };
+          missing.push(a.name || a.filePath || "");
           return a;
         })
       );
+      if (missing.length > 0) {
+        addToast(
+          `${missing.length} arquivo(s) não encontrado(s): ${missing.slice(0, 2).join(", ")}${missing.length > 2 ? ` +${missing.length - 2}` : ""}. Reimporte os arquivos.`,
+          "error"
+        );
+      }
       setAssets(restored);
 
       // Atualiza projetos recentes
@@ -1638,7 +1649,7 @@ export function App() {
                       <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Tela dividida</p>
                       <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2">
                         <p className="text-[10px] text-muted-foreground leading-relaxed">
-                          Para colocar dois vídeos lado a lado: adicione ambos na timeline em tracks diferentes (o segundo clip vai para o track abaixo). No futuro export, os tracks são compostos em camadas. Para split-screen manual, coloque os dois clipes no mesmo intervalo de tempo em tracks 0 e 1.
+                          O export usa somente o <strong>track 0</strong> de vídeo. Tracks adicionais de vídeo são ignorados no export — use para organizar a edição visualmente. Áudio de qualquer track é incluído.
                         </p>
                       </div>
                     </div>
@@ -1738,10 +1749,22 @@ export function App() {
           const isAudio  = exportFormat === "mp3" || exportFormat === "wav";
           const isPortable = exportFormat === "v4";
 
-          const getClips = () => visualCopies.map((c) => {
-            const asset = assets.find((a) => a.id === c.assetId);
-            return { filePath: asset?.filePath || "", trimStart: c.trimStart ?? 0, duration: c.duration ?? 5, speed: c.speed ?? 1 };
-          });
+          const getClips = () => {
+            // Export usa apenas track 0 de vídeo (composição multi-track não implementada).
+            // Áudio de qualquer track é incluído. Ordem: por startTime.
+            const sorted = [...visualCopies].sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0));
+            return sorted
+              .filter((c) => {
+                const asset = assets.find((a) => a.id === c.assetId);
+                if (!asset) return false;
+                if (asset.kind === "video" || asset.kind === "image") return (c.trackIndex ?? 0) === 0;
+                return true; // áudio: todas as tracks
+              })
+              .map((c) => {
+                const asset = assets.find((a) => a.id === c.assetId);
+                return { filePath: asset?.filePath || "", trimStart: c.trimStart ?? 0, duration: c.duration ?? 5, speed: c.speed ?? 1 };
+              });
+          };
 
           const runExport = async () => {
             setExportError(null);

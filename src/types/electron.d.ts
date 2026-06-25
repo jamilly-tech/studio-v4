@@ -84,6 +84,7 @@ declare global {
         detectSilence: (filePath: string, opts?: { noiseDb?: number; minDur?: number; minPause?: number }) => Promise<{ intervals: { start: number; end: number; duration: number }[]; totalDuration: number; error?: string }>;
       };
 
+      googleAuthConfigured: () => Promise<{ configured: boolean }>;
       googleAuth: () => Promise<{ accessToken: string; refreshToken: string | null; expiresIn: number }>;
       googleRefreshToken: (refreshToken: string) => Promise<{ accessToken: string; expiresIn: number }>;
 

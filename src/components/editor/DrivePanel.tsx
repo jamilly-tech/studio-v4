@@ -31,6 +31,11 @@ export function DrivePanel({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [credentialsOk, setCredentialsOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    window.studioV4?.googleAuthConfigured?.().then((r) => setCredentialsOk(r.configured)).catch(() => setCredentialsOk(false));
+  }, []);
   const [files, setFiles] = useState<{ id: string; name: string; modifiedTime: string }[]>([]);
   const [folderId, setFolderId] = useState<string | null>(() => {
     try { return localStorage.getItem(FOLDER_KEY); } catch { return null; }
@@ -152,12 +157,25 @@ export function DrivePanel({
         </p>
       </div>
 
+      {credentialsOk === false && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 flex flex-col gap-1.5">
+          <p className="text-[10px] font-bold text-amber-400">Credenciais Google não configuradas</p>
+          <p className="text-[9px] text-amber-300/80 leading-relaxed">
+            Para usar o Drive, crie um projeto no Google Cloud Console, ative a API Drive, gere credenciais OAuth 2.0 e preencha <span className="font-mono">.env</span>:
+          </p>
+          <code className="rounded bg-black/30 px-2 py-1 text-[8px] text-amber-200/80 font-mono">
+            GOOGLE_CLIENT_ID=...<br />
+            GOOGLE_CLIENT_SECRET=...
+          </code>
+        </div>
+      )}
+
       {!connected ? (
         <button
           type="button"
           onClick={handleConnect}
-          disabled={loading}
-          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-bold text-white hover:bg-primary/90 active:scale-95 transition disabled:opacity-50"
+          disabled={loading || credentialsOk === false}
+          className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-bold text-white hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <><Loader2 className="size-4 animate-spin" /> Conectando...</>

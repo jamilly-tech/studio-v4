@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("studioV4", {
   },
 
   // ── Google Auth ───────────────────────────────────────────────────────────
+  googleAuthConfigured: () => ipcRenderer.invoke("google-auth-configured"),
   googleAuth: () => ipcRenderer.invoke("google-auth"),
   googleRefreshToken: (refreshToken) => ipcRenderer.invoke("google-refresh-token", refreshToken),
 
