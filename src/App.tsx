@@ -146,6 +146,7 @@ export function App() {
   const [exportFormat, setExportFormat] = useState<"v4" | "mp4" | "mov" | "gif" | "mp3" | "wav">("mp4");
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [presetIntensity, setPresetIntensity] = useState(100);
   const [toasts, setToasts] = useState<{ id: string; msg: string; type: "error" | "info" | "ok" }[]>([]);
 
   const addToast = useCallback((msg: string, type: "error" | "info" | "ok" = "info") => {
@@ -461,7 +462,7 @@ export function App() {
     if (text.startsWith("preset:")) {
       const [, id] = text.split(":");
       const f = PRESET_FILTERS[id];
-      if (f) { setActiveEffect(id); setActiveEffectCss(f); }
+      if (f) { setActiveEffect(id); setActiveEffectCss(f); setPresetIntensity(100); }
       return;
     }
 
@@ -521,7 +522,7 @@ export function App() {
     await ingestFiles([result.path]);
     const newAsset = useAssetsStore.getState().assets.find((a) => a.filePath === result.path || a.url === result.path);
     if (newAsset) {
-      const copy = createTimelineCopyForAsset(newAsset, startTime);
+      const copy = createTimelineCopyForAsset(newAsset, startTime, "manual", 1);
       setVisualCopies((prev) => [...prev, copy]);
     }
   }, [ingestFiles, setVisualCopies]);
@@ -675,7 +676,7 @@ export function App() {
                 <div key={id} className="relative group w-full flex justify-center">
                   <button
                     type="button"
-                    onClick={() => setActiveTool(id)}
+                    onClick={() => { setActiveTool(id); setPreviewTool(null); }}
                     className={`flex w-16 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${
                       isActive
                         ? "bg-primary text-primary-foreground"
@@ -827,11 +828,13 @@ export function App() {
                       <button
                         type="button"
                         onClick={() => setFormatOpen(!formatOpen)}
-                        className="flex items-center gap-1 rounded-md border border-border bg-secondary px-1.5 py-1 text-foreground transition hover:bg-muted"
+                        className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2 py-1 text-foreground transition hover:bg-muted"
                         title={`${activeFormat.label} ${activeFormat.size} · Safe zone legenda: ${CAPTION_SAFE_ZONE[activeFormat.id] ?? 12}% do fundo`}
                       >
                         {FORMAT_ICONS[activeFormat.id] || <Smartphone className="size-3.5" />}
-                        <ChevronDown className="size-2.5 text-muted-foreground" />
+                        <span className="text-[10px] font-semibold">{activeFormat.label}</span>
+                        <span className="text-[9px] text-muted-foreground">{activeFormat.size}</span>
+                        <ChevronDown className="size-2.5 text-muted-foreground ml-0.5" />
                       </button>
                       {formatOpen && (
                         <div className="absolute left-0 top-8 z-50 w-36 rounded-lg border border-border bg-background shadow-xl overflow-hidden">
@@ -839,7 +842,15 @@ export function App() {
                             <button
                               key={fp.id}
                               type="button"
-                              onClick={() => { setActiveFormat(fp); setFormatOpen(false); }}
+                              onClick={() => {
+                                setActiveFormat(fp);
+                                setFormatOpen(false);
+                                const chromeMap: Record<string, "reels"|"tiktok"|"story"|"youtube"|"off"> = {
+                                  reels: "reels", tiktok: "tiktok", story: "story",
+                                  youtube: "youtube", wide: "youtube", feed: "off",
+                                };
+                                setCaptionChrome(chromeMap[fp.id] ?? "off");
+                              }}
                               className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition ${
                                 activeFormat.id === fp.id ? "bg-primary/10 text-primary" : "hover:bg-card text-foreground"
                               }`}
@@ -896,10 +907,10 @@ export function App() {
                     {splitScreen && previewUrl ? (
                       <div className="absolute inset-0 flex flex-col">
                         <div className="flex-1 overflow-hidden border-b border-white/20">
-                          <video src={previewUrl} className="h-full w-full object-cover" style={{ filter: activeEffectCss }} muted />
+                          <video src={previewUrl} className="h-full w-full object-cover" style={{ filter: blendFilter(activeEffectCss, presetIntensity) }} muted />
                         </div>
                         <div className="flex-1 overflow-hidden">
-                          <video src={previewUrl} className="h-full w-full object-cover" style={{ filter: activeEffectCss, transform: "scaleX(-1)" }} muted />
+                          <video src={previewUrl} className="h-full w-full object-cover" style={{ filter: blendFilter(activeEffectCss, presetIntensity), transform: "scaleX(-1)" }} muted />
                         </div>
                         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-white/40 cursor-row-resize" />
                       </div>
@@ -908,7 +919,6 @@ export function App() {
                         ref={videoRef}
                         src={previewUrl}
                         className="absolute object-contain transition-[filter] duration-200"
-                        style={previewQuality === "low" ? { top: 0, left: 0, width: "25%", height: "25%", transformOrigin: "top left", transform: "scale(4)", imageRendering: "pixelated" } : { inset: 0, width: "100%", height: "100%" }}
                         style={(() => {
                           const activeClip = visualCopies.find(c => {
                             const s = c.startTime ?? 0;
@@ -918,8 +928,20 @@ export function App() {
                           const opacity = activeClip?.opacity != null ? activeClip.opacity / 100 : 1;
                           const brightness = activeClip?.brightness != null ? activeClip.brightness / 100 : 1;
                           const clipFilter = brightness !== 1 ? `brightness(${brightness})` : "";
-                          const combinedFilter = [activeEffectCss !== "none" ? activeEffectCss : "", clipFilter].filter(Boolean).join(" ") || "none";
+                          const blended = blendFilter(activeEffectCss, presetIntensity);
+                          const combinedFilter = [blended !== "none" ? blended : "", clipFilter].filter(Boolean).join(" ") || "none";
+                          if (previewQuality === "low") {
+                            return {
+                              top: 0, left: 0, width: "25%", height: "25%",
+                              transformOrigin: "top left",
+                              transform: "scale(4)",
+                              imageRendering: "pixelated" as const,
+                              filter: combinedFilter,
+                              opacity,
+                            };
+                          }
                           return {
+                            inset: 0, width: "100%", height: "100%",
                             filter: combinedFilter,
                             opacity,
                             transform: `translate(${videoTransform.x}px, ${videoTransform.y}px) scale(${videoTransform.scale / 100})`,
@@ -950,7 +972,7 @@ export function App() {
                         src={previewUrl}
                         className="absolute inset-0 h-full w-full object-contain transition-[filter] duration-200"
                         style={{
-                          filter: activeEffectCss,
+                          filter: blendFilter(activeEffectCss, presetIntensity),
                           transform: `translate(${videoTransform.x}px, ${videoTransform.y}px) scale(${videoTransform.scale / 100})`,
                         }}
                         alt=""
@@ -1479,6 +1501,34 @@ export function App() {
                     );
                   })()}
 
+                  {/* ── Filtro ativo — intensidade ── */}
+                  {activeEffect && activeEffectCss !== "none" && (
+                    <div className="rounded-xl border border-border bg-card overflow-hidden mb-2">
+                      <div className="px-3 py-2 border-b border-border/50 bg-muted/30 flex items-center justify-between">
+                        <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Filtro ativo</span>
+                        <button
+                          type="button"
+                          onClick={() => { setActiveEffect(null); setActiveEffectCss("none"); setPresetIntensity(100); }}
+                          className="text-[8px] text-destructive/60 hover:text-destructive transition"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-2 px-3 py-2.5">
+                        <p className="text-[10px] font-semibold text-foreground truncate">{activeEffect}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-muted-foreground w-14 shrink-0">Intensidade</span>
+                          <input
+                            type="range" min={0} max={100} step={5} value={presetIntensity}
+                            onChange={e => setPresetIntensity(Number(e.target.value))}
+                            className="flex-1 h-1.5 accent-primary rounded-full"
+                          />
+                          <span className="text-[9px] font-bold tabular-nums text-foreground w-7 text-right">{presetIntensity}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {activeTool === "ai" ? (
                     <CleanCutPanel
                       assets={assets}
@@ -1749,14 +1799,14 @@ export function App() {
                     <PresetsPanel
                       onApplyPreset={(id, _name) => {
                         const f = PRESET_FILTERS[id];
-                        if (f) { setActiveEffect(id); setActiveEffectCss(f); }
+                        if (f) { setActiveEffect(id); setActiveEffectCss(f); setPresetIntensity(100); }
                       }}
                       onImportPreset={handleImport}
                     />
                   ) : activeTool === "effects" ? (
                     <EffectsPanel
                       activeEffect={activeEffect}
-                      onApplyEffect={(id, css) => { setActiveEffect(id); setActiveEffectCss(css); }}
+                      onApplyEffect={(id, css) => { setActiveEffect(id); setActiveEffectCss(css); setPresetIntensity(100); }}
                       previewFrameUrl={previewAsset?.thumbnailUrl}
                     />
                   ) : activeTool === "text" ? (
@@ -2294,4 +2344,22 @@ function formatTimecode(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function blendFilter(filterStr: string, intensity: number): string {
+  if (!filterStr || filterStr === "none") return "none";
+  if (intensity >= 100) return filterStr;
+  if (intensity <= 0) return "none";
+  const t = intensity / 100;
+  return filterStr
+    .replace(/(brightness|contrast|saturate|opacity)\(([\d.]+)\)/g, (_m, fn, val) => {
+      const blended = 1 + (parseFloat(val) - 1) * t;
+      return `${fn}(${blended.toFixed(3)})`;
+    })
+    .replace(/(sepia|grayscale)\(([\d.]+)\)/g, (_m, fn, val) => {
+      return `${fn}(${(parseFloat(val) * t).toFixed(3)})`;
+    })
+    .replace(/hue-rotate\(([\d.-]+)deg\)/g, (_m, val) => {
+      return `hue-rotate(${(parseFloat(val) * t).toFixed(1)}deg)`;
+    });
 }

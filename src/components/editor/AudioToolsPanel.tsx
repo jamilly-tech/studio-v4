@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Music2, Mic2, Guitar, Download, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Music2, Mic2, Guitar, Download, Loader2, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import type { ImportedAsset } from "@/types/editor";
 
 interface AudioToolsPanelProps {
@@ -38,6 +38,18 @@ function buildWavePath(peaks: number[]): string {
 export function AudioToolsPanel({ asset, onAddAudioToTimeline }: AudioToolsPanelProps) {
   const [wavState, setWavState] = useState<WavState>({ status: "idle" });
   const [stemsState, setStemsState] = useState<StemsState>({ status: "idle" });
+  const [stemsElapsed, setStemsElapsed] = useState(0);
+  const stemsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (stemsState.status === "running") {
+      setStemsElapsed(0);
+      stemsTimerRef.current = setInterval(() => setStemsElapsed(s => s + 1), 1000);
+    } else {
+      if (stemsTimerRef.current) { clearInterval(stemsTimerRef.current); stemsTimerRef.current = null; }
+    }
+    return () => { if (stemsTimerRef.current) clearInterval(stemsTimerRef.current); };
+  }, [stemsState.status]);
 
   const filePath = asset?.filePath;
   const hasMedia = !!(filePath && (asset?.kind === "video" || asset?.kind === "audio"));
@@ -181,8 +193,11 @@ export function AudioToolsPanel({ asset, onAddAudioToTimeline }: AudioToolsPanel
           <span className="text-[11px] font-bold">Separação de Vocais</span>
         </div>
         <p className="text-[9px] text-muted-foreground leading-relaxed">
-          Separa voz e instrumentos usando IA (Demucs). Funciona com múltiplas vozes.
+          Separa voz e instrumentos usando IA (Demucs). Requer Python + demucs instalados.
         </p>
+        <div className="rounded-md bg-muted/40 border border-border/50 px-2 py-1.5 text-[8px] text-muted-foreground font-mono leading-relaxed">
+          pip install demucs
+        </div>
         {stemsState.status === "idle" && (
           <button
             type="button"
@@ -194,12 +209,26 @@ export function AudioToolsPanel({ asset, onAddAudioToTimeline }: AudioToolsPanel
           </button>
         )}
         {stemsState.status === "running" && (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> Processando com IA...
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <Loader2 className="size-3 animate-spin text-primary" />
+                <span>Processando com IA...</span>
+              </div>
+              <div className="flex items-center gap-1 text-[9px] font-mono text-muted-foreground/60">
+                <Clock className="size-2.5" />
+                <span>{Math.floor(stemsElapsed / 60).toString().padStart(2,"0")}:{(stemsElapsed % 60).toString().padStart(2,"0")}</span>
+              </div>
             </div>
-            <p className="text-[8px] text-muted-foreground">
-              Pode demorar 1–5 min. Na primeira vez baixa o modelo (~150MB).
+            <div className="h-1 rounded-full bg-muted overflow-hidden">
+              <div className="h-full bg-primary/60 rounded-full animate-pulse" style={{ width: `${Math.min(95, (stemsElapsed / 180) * 100)}%`, transition: "width 1s linear" }} />
+            </div>
+            <p className="text-[8px] text-muted-foreground leading-relaxed">
+              {stemsElapsed < 15
+                ? "Iniciando... Na primeira execução baixa o modelo Demucs (~150 MB)."
+                : stemsElapsed < 60
+                ? "Demucs em execução. Tempo típico: 2–10 min dependendo do CPU."
+                : "Ainda processando — vídeos longos podem demorar mais. Aguarde."}
             </p>
           </div>
         )}
@@ -224,10 +253,19 @@ export function AudioToolsPanel({ asset, onAddAudioToTimeline }: AudioToolsPanel
           </div>
         )}
         {stemsState.status === "error" && (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-[10px] text-destructive">
-              <AlertCircle className="size-3" /> {stemsState.message}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-start gap-1.5 text-[10px] text-destructive">
+              <AlertCircle className="size-3 mt-0.5 shrink-0" />
+              <span>{stemsState.message}</span>
             </div>
+            {(stemsState.message.toLowerCase().includes("demucs") ||
+              stemsState.message.toLowerCase().includes("python") ||
+              stemsState.message.toLowerCase().includes("not found") ||
+              stemsState.message.toLowerCase().includes("module")) && (
+              <p className="text-[8px] text-amber-400/80 leading-relaxed">
+                Demucs não encontrado. Execute <code className="font-mono bg-muted/40 px-1 rounded">pip install demucs</code> no terminal e reinicie o app.
+              </p>
+            )}
             <button
               type="button"
               onClick={() => setStemsState({ status: "idle" })}
