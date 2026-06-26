@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
-import { Film, Music2, ImageIcon, Trash2, Scissors, Volume2, Plus, X, Copy } from "lucide-react";
-import type { ImportedAsset, TimelineVisualCopy } from "@/types/editor";
+import { memo, useCallback, useRef, useState } from "react";
+import { Film, Music2, Captions, Trash2, Scissors, Volume2, Plus, X, Copy } from "lucide-react";
+import type { ImportedAsset, TimelineVisualCopy, TranscriptSegment } from "@/types/editor";
 import { getTimelineClipDuration, timelinePixelsPerSecond } from "@/utils/timeline";
 import { createLocalId } from "@/utils/id";
 
@@ -21,11 +21,13 @@ interface TimelineProps {
   currentTime: number;
   onSeek: (time: number) => void;
   onDropAsset?: (assetId: string, atTime: number) => void;
+  captionSegments?: TranscriptSegment[];
 }
 
-export function Timeline({
+function TimelineImpl({
   assets, visualCopies, onSetVisualCopies,
   selectedAssetId, onSelectAsset, currentTime, onSeek, onDropAsset,
+  captionSegments = [],
 }: TimelineProps) {
   const [zoom, setZoom] = useState(1);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -333,6 +335,40 @@ export function Timeline({
             </div>
           ))}
 
+          {/* Caption track */}
+          {captionSegments.length > 0 && (
+            <div className="relative border-b border-border/15" style={{ height: trackH }}>
+              <div className="absolute left-0 top-0 z-10 flex h-full w-14 flex-col items-center justify-center gap-0.5 border-r border-border bg-background">
+                <Captions className="size-3 text-blue-400/70" />
+                <span className="text-[7px] font-bold text-muted-foreground/60">CC</span>
+              </div>
+              <div className="relative ml-14 h-full">
+                {captionSegments.map((seg, i) => {
+                  const left = seg.start * pxPerSec;
+                  const width = Math.max(20, (seg.end - seg.start) * pxPerSec);
+                  const isActive = currentTime >= seg.start && currentTime <= seg.end;
+                  return (
+                    <div
+                      key={`cap-${i}`}
+                      className={`absolute top-[3px] flex items-center overflow-hidden rounded px-1 transition cursor-pointer ${
+                        isActive
+                          ? "bg-blue-500 ring-2 ring-blue-300 z-10"
+                          : "bg-blue-500/30 hover:bg-blue-500/50"
+                      }`}
+                      style={{ left, width, height: trackH - 6 }}
+                      onClick={() => onSeek(seg.start)}
+                      title={seg.text}
+                    >
+                      <span className="truncate text-[8px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                        {seg.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Playhead */}
           <div
             className="absolute top-0 bottom-0 z-20 w-px bg-primary pointer-events-none"
@@ -353,6 +389,9 @@ export function Timeline({
     </section>
   );
 }
+
+// React.memo evita re-render quando as props nao mudam (ex: pointermove externo)
+export const Timeline = memo(TimelineImpl);
 
 // ── Render helpers ────────────────────────────────────────────────────────
 

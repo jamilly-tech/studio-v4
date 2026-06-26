@@ -75,6 +75,15 @@ declare global {
         thumbnailStrip: (filePath: string, opts?: { count?: number; width?: number; height?: number }) => Promise<{ thumbnails: string[]; duration: number }>;
         transcribe: (filePath: string, language?: string) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
         removeWatermark: (filePath: string, region: { x: number; y: number; w: number; h: number }) => Promise<{ outputPath: string; proxyUrl: string }>;
+        separateVocals: (filePath: string, opts?: Record<string, unknown>) => Promise<{
+          mode?: string;
+          message: string;
+          vocalsUrl?: string;
+          vocalsPath?: string;
+          instrumentalUrl?: string | null;
+          instrumentalPath?: string | null;
+          error?: string;
+        }>;
         onProgress: (cb: (data: MediaProgressEvent) => void) => () => void;
         registerProxy: (filePath: string) => Promise<{ url?: string; error?: string }>;
       };

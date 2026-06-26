@@ -534,6 +534,73 @@ ipcMain.handle("media:remove-watermark", async (_event, filePath, region) => {
   });
 });
 
+// ── 6b. Vocal Separation (fallback via FFmpeg) ──────────────────────────────
+// A separacao por IA (Demucs/PyTorch) frequentemente falha por ImportError em
+// ambientes sem o stack de ML instalado. Este handler usa filtros nativos do
+// FFmpeg como fallback robusto:
+//   - vocals: band-pass (highpass 200Hz + lowpass 3500Hz) isola a faixa da voz
+//   - instrumental: subtracao de fase do canal central (remove voz centralizada)
+// Retorna { vocalsUrl, instrumentalUrl, mode, message } sempre que possivel.
+
+ipcMain.handle("media:separate-vocals", async (_event, filePath, opts = {}) => {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { error: "Arquivo nao encontrado" };
+  }
+
+  const baseName = safeBaseName(filePath);
+  const stamp = Date.now();
+  const vocalsPath = path.join(projectTmpDir, `vocals_${stamp}_${baseName}.wav`);
+  const instrumentalPath = path.join(projectTmpDir, `instrumental_${stamp}_${baseName}.wav`);
+
+  const port = () => server?.address()?.port ?? preferredPort;
+  const toUrl = (p) => `http://127.0.0.1:${port()}/proxy?f=${encodeURIComponent(p)}`;
+
+  // Mensagem clara: este e o fallback, nao a separacao por IA completa.
+  const message =
+    "Separacao por IA (Demucs) indisponivel neste ambiente — requer PyTorch instalado. " +
+    "Usando isolamento basico por filtros de frequencia do FFmpeg (resultado aproximado).";
+
+  try {
+    // 1) Voz aproximada: band-pass na faixa vocal tipica
+    const vocalsArgs = [
+      "-i", filePath,
+      "-vn",
+      "-af", "highpass=f=200,lowpass=f=3500,afftdn",
+      "-c:a", "pcm_s16le",
+      "-y", vocalsPath,
+    ];
+    const vocalsResult = await runProcess(ffmpegPath, vocalsArgs);
+    if (vocalsResult.code !== 0 || !fs.existsSync(vocalsPath)) {
+      return { error: "Falha ao isolar a voz com FFmpeg", message };
+    }
+    proxyPaths.add(vocalsPath);
+
+    // 2) Instrumental aproximado: remove o conteudo centralizado (voz) via
+    //    cancelamento estereo (L-R). Funciona melhor em faixas estereo reais.
+    const instArgs = [
+      "-i", filePath,
+      "-vn",
+      "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
+      "-c:a", "pcm_s16le",
+      "-y", instrumentalPath,
+    ];
+    const instResult = await runProcess(ffmpegPath, instArgs);
+    const hasInstrumental = instResult.code === 0 && fs.existsSync(instrumentalPath);
+    if (hasInstrumental) proxyPaths.add(instrumentalPath);
+
+    return {
+      mode: "ffmpeg-fallback",
+      message,
+      vocalsUrl: toUrl(vocalsPath),
+      vocalsPath,
+      instrumentalUrl: hasInstrumental ? toUrl(instrumentalPath) : null,
+      instrumentalPath: hasInstrumental ? instrumentalPath : null,
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Erro na separacao vocal", message };
+  }
+});
+
 // ── 7. Video Thumbnails Strip (para timeline) ───────────────────────────────
 
 ipcMain.handle("media:thumbnail-strip", async (_event, filePath, opts = {}) => {

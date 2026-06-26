@@ -81,9 +81,46 @@ export function App() {
   const [exportResolution, setExportResolution] = useState<"720p" | "1080p">("1080p");
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [vocalSep, setVocalSep] = useState<{ loading: boolean; message: string | null; vocalsUrl?: string; instrumentalUrl?: string | null; isError: boolean } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const dragCounterRef = useRef(0);
+  const previewStageRef = useRef<HTMLDivElement>(null);
+  const [previewFrameSize, setPreviewFrameSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  // Ratio numerico do formato ativo (ex: "9 / 16" -> 0.5625)
+  const formatRatio = (() => {
+    const parts = activeFormat.aspect.split("/").map((p) => parseFloat(p.trim()));
+    if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) return parts[0] / parts[1];
+    return 9 / 16;
+  })();
+
+  // Calcula o tamanho do frame de preview respeitando o aspect ratio e cabendo nos dois eixos
+  useEffect(() => {
+    const stage = previewStageRef.current;
+    if (!stage) return;
+    const compute = () => {
+      const cs = getComputedStyle(stage);
+      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      const availW = stage.clientWidth - padX;
+      const availH = stage.clientHeight - padY;
+      if (availW <= 0 || availH <= 0) return;
+      // Cabe pela largura
+      let w = availW;
+      let h = w / formatRatio;
+      // Se estourar a altura, limita pela altura
+      if (h > availH) {
+        h = availH;
+        w = h * formatRatio;
+      }
+      setPreviewFrameSize({ width: Math.round(w), height: Math.round(h) });
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [formatRatio]);
 
   const { assets, setAssets, addAssets, selectedAssetId, setSelectedAssetId, updateAsset } = useAssetsStore();
   const { visualCopies, setVisualCopies, undo, redo, clear: timelineClear } = useTimelineStore();
@@ -217,6 +254,11 @@ export function App() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [undo, redo]);
+
+  const handleSeek = useCallback((t: number) => {
+    setCurrentTime(t);
+    if (videoRef.current) videoRef.current.currentTime = t;
+  }, []);
 
   const ingestFiles = useCallback(async (filePaths: string[]) => {
     if (!window.studioV4?.media?.ingest) return;
@@ -581,11 +623,15 @@ export function App() {
                   <span className="text-[9px] text-foreground/50 font-mono">{activeFormat.size}</span>
                 </div>
 
-                {/* Preview area */}
-                <div className="relative flex flex-1 items-center justify-center bg-[var(--preview-surface)] p-2">
+                {/* Preview area — respeita o aspect ratio do formato selecionado */}
+                <div ref={previewStageRef} className="preview-stage relative flex flex-1 items-center justify-center overflow-hidden bg-[var(--preview-surface)] p-3">
                   <div
-                    className="relative overflow-hidden rounded bg-[var(--preview-frame)]"
-                    style={{ aspectRatio: activeFormat.aspect, maxHeight: "100%", maxWidth: "100%", width: "90%" }}
+                    className="preview-frame relative overflow-hidden rounded bg-[var(--preview-frame)] shadow-2xl ring-1 ring-white/10"
+                    style={
+                      previewFrameSize.width > 0
+                        ? { width: previewFrameSize.width, height: previewFrameSize.height }
+                        : { aspectRatio: activeFormat.aspect, maxHeight: "100%", maxWidth: "100%" }
+                    }
                   >
                     {splitScreen && previewUrl ? (
                       <div className="absolute inset-0 flex flex-col">
@@ -818,13 +864,13 @@ export function App() {
                       assets={assets}
                       selectedAssetId={selectedAssetId}
                       onApplyCuts={handleApplyCuts}
-                      onSeek={(t) => { setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
+                      onSeek={handleSeek}
                     />
                   ) : activeTool === "captions" ? (
                     <TranscriptionPanel
                       assets={assets}
                       selectedAssetId={selectedAssetId}
-                      onSeek={(t) => { setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
+                      onSeek={handleSeek}
                       onCaptionsGenerated={setCaptionSegments}
                     />
                   ) : activeTool === "presets" ? (
@@ -865,6 +911,55 @@ export function App() {
                       >
                         Ir para Corte Limpo
                       </button>
+
+                      {/* Separacao vocal (com fallback FFmpeg) */}
+                      <div className="rounded-xl border border-border bg-card/40 p-3">
+                        <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">Separar Voz</p>
+                        <p className="mb-2 text-[10px] text-muted-foreground leading-relaxed">
+                          Isola voz e instrumental do clipe selecionado.
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!previewAsset?.filePath || vocalSep?.loading}
+                          onClick={async () => {
+                            if (!previewAsset?.filePath) return;
+                            setVocalSep({ loading: true, message: null, isError: false });
+                            try {
+                              const r = await window.studioV4?.media?.separateVocals?.(previewAsset.filePath);
+                              if (!r || r.error) {
+                                setVocalSep({ loading: false, isError: true, message: r?.message || r?.error || "Falha na separacao vocal" });
+                              } else {
+                                setVocalSep({ loading: false, isError: false, message: r.message, vocalsUrl: r.vocalsUrl, instrumentalUrl: r.instrumentalUrl });
+                              }
+                            } catch (err) {
+                              setVocalSep({ loading: false, isError: true, message: err instanceof Error ? err.message : "Erro na separacao vocal" });
+                            }
+                          }}
+                          className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:bg-primary/90 transition disabled:opacity-40"
+                        >
+                          {vocalSep?.loading ? "Separando..." : "Separar voz / instrumental"}
+                        </button>
+                        {vocalSep?.message && (
+                          <div className={`mt-2 rounded-lg border p-2 ${vocalSep.isError ? "border-destructive/30 bg-destructive/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+                            <p className={`text-[9px] leading-relaxed ${vocalSep.isError ? "text-destructive" : "text-amber-600 dark:text-amber-300"}`}>{vocalSep.message}</p>
+                          </div>
+                        )}
+                        {vocalSep?.vocalsUrl && (
+                          <div className="mt-2 flex flex-col gap-1.5">
+                            <div>
+                              <p className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60">Voz</p>
+                              <audio src={vocalSep.vocalsUrl} controls className="mt-0.5 h-7 w-full" />
+                            </div>
+                            {vocalSep.instrumentalUrl && (
+                              <div>
+                                <p className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground/60">Instrumental</p>
+                                <audio src={vocalSep.instrumentalUrl} controls className="mt-0.5 h-7 w-full" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {previewAsset?.waveformPeaks && previewAsset.waveformPeaks.length > 0 && (
                         <div>
                           <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider mb-1">Waveform</p>
@@ -887,19 +982,45 @@ export function App() {
                       getProjectSnapshot={getProjectSnapshot}
                     />
                   ) : previewAsset ? (
-                    <div className="flex flex-col gap-3">
-                      <h3 className="text-xs font-black">Info</h3>
-                      {previewAsset.thumbnailUrl && (
-                        <img src={previewAsset.thumbnailUrl} className="w-full rounded-lg object-cover" alt="" />
-                      )}
-                      <InfoRow label="Arquivo" value={previewAsset.name} />
-                      {previewAsset.metadata?.resolution && <InfoRow label="Resolucao" value={previewAsset.metadata.resolution} />}
-                      {previewAsset.metadata?.duration && <InfoRow label="Duracao" value={previewAsset.metadata.duration} />}
-                      {previewAsset.metadata?.codec && <InfoRow label="Codec" value={previewAsset.metadata.codec} />}
-                      {previewAsset.metadata?.fps && <InfoRow label="FPS" value={previewAsset.metadata.fps} />}
-                      <InfoRow label="Tamanho" value={previewAsset.size} />
-                      <InfoRow label="Tipo" value={previewAsset.kind} />
-                      <div className="mt-2 border-t border-border pt-3">
+                    <div className="flex flex-col gap-4">
+                      {/* Cabecalho com thumbnail */}
+                      <div className="overflow-hidden rounded-xl border border-border bg-card">
+                        <div className="relative aspect-video w-full bg-[var(--preview-frame)]">
+                          {previewAsset.thumbnailUrl ? (
+                            <img src={previewAsset.thumbnailUrl} className="h-full w-full object-cover" alt="" />
+                          ) : (
+                            <div className="grid h-full w-full place-items-center">
+                              {previewAsset.kind === "audio" ? <Music2 className="size-8 text-white/20" /> : previewAsset.kind === "image" ? <ImageIcon className="size-8 text-white/20" /> : <Film className="size-8 text-white/20" />}
+                            </div>
+                          )}
+                          <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white/80 backdrop-blur-sm">
+                            {previewAsset.kind}
+                          </span>
+                          {previewAsset.metadata?.duration && (
+                            <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[8px] font-mono text-white/80 backdrop-blur-sm">
+                              {previewAsset.metadata.duration}
+                            </span>
+                          )}
+                        </div>
+                        <div className="px-3 py-2.5">
+                          <p className="truncate text-[12px] font-bold" title={previewAsset.name}>{previewAsset.displayName || previewAsset.name}</p>
+                          <p className="mt-0.5 text-[9px] text-muted-foreground">{previewAsset.size}</p>
+                        </div>
+                      </div>
+
+                      {/* Card de propriedades */}
+                      <InfoCard title="Propriedades">
+                        <InfoRow label="Arquivo" value={previewAsset.name} />
+                        {previewAsset.metadata?.resolution && <InfoRow label="Resolucao" value={previewAsset.metadata.resolution} />}
+                        {previewAsset.metadata?.duration && <InfoRow label="Duracao" value={previewAsset.metadata.duration} />}
+                        {previewAsset.metadata?.codec && <InfoRow label="Codec" value={previewAsset.metadata.codec} />}
+                        {previewAsset.metadata?.fps && <InfoRow label="FPS" value={previewAsset.metadata.fps} />}
+                        <InfoRow label="Tamanho" value={previewAsset.size} />
+                        <InfoRow label="Tipo" value={previewAsset.kind} />
+                      </InfoCard>
+
+                      {/* Card do Drive */}
+                      <InfoCard title="Backup & Drive">
                         <DrivePanel
                           connected={driveConnected}
                           profile={googleProfile}
@@ -909,7 +1030,7 @@ export function App() {
                           onLoadProject={handleLoadProject}
                           getProjectSnapshot={getProjectSnapshot}
                         />
-                      </div>
+                      </InfoCard>
                     </div>
                   ) : (
                     <DrivePanel
@@ -933,7 +1054,8 @@ export function App() {
               selectedAssetId={selectedAssetId}
               onSelectAsset={setSelectedAssetId}
               currentTime={currentTime}
-              onSeek={(t) => { setCurrentTime(t); if (videoRef.current) videoRef.current.currentTime = t; }}
+              captionSegments={captionSegments}
+              onSeek={handleSeek}
               onDropAsset={(assetId, atTime) => {
                 const asset = assets.find((a) => a.id === assetId);
                 if (!asset) return;
@@ -1061,11 +1183,20 @@ export function App() {
   );
 }
 
+function InfoCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-card/40 p-3">
+      <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-muted-foreground/70">{title}</p>
+      <div className="flex flex-col gap-1.5">{children}</div>
+    </div>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">{label}</p>
-      <p className="mt-0.5 text-[11px] font-medium break-all">{value}</p>
+    <div className="flex items-baseline justify-between gap-3 border-b border-border/40 pb-1.5 last:border-0 last:pb-0">
+      <p className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">{label}</p>
+      <p className="min-w-0 break-all text-right text-[11px] font-semibold">{value}</p>
     </div>
   );
 }

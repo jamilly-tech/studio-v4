@@ -106,3 +106,12 @@
     background: hsl(var(--muted-foreground) / 0.4);
   }
 }
+
+/* ── Preview: o frame respeita o aspect-ratio do formato e cabe nos dois eixos ── */
+/* A largura/altura sao calculadas em JS via min() (ver App.tsx) usando o ratio
+   numerico do formato, garantindo que o frame caiba tanto na altura quanto na
+   largura disponivel sem distorcer o aspect ratio. */
+.preview-stage {
+  min-height: 0;
+  min-width: 0;
+}
