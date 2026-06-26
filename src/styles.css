@@ -29,26 +29,26 @@
   }
 
   .theme-dark {
-    --background: 0 0% 9%;
+    --background: 0 0% 18%;
     --foreground: 0 0% 97%;
-    --card: 0 0% 20%;
-    --muted: 0 0% 26%;
-    --muted-foreground: 0 0% 78%;
-    --secondary: 0 0% 22%;
-    --border: 0 0% 32%;
+    --card: 0 0% 24%;
+    --muted: 0 0% 30%;
+    --muted-foreground: 0 0% 72%;
+    --secondary: 0 0% 28%;
+    --border: 0 0% 35%;
     --primary: 358 93% 47%;
     --primary-foreground: 0 0% 100%;
     --brand-soft: 358 93% 14%;
     --destructive: 0 84% 52%;
-    --workspace: #1c1c1c;
-    --panel-soft: #212121;
-    --preview-surface: #242424;
-    --preview-frame: #111111;
-    --preview-control: rgba(38, 38, 38, 0.96);
+    --workspace: #2d2d2d;
+    --panel-soft: #333333;
+    --preview-surface: #363636;
+    --preview-frame: #252525;
+    --preview-control: rgba(50, 50, 50, 0.95);
     --preview-control-foreground: #ffffff;
-    --timeline-bg: 0 0% 11%;
-    --timeline-track: 0 0% 17%;
-    --timeline-ruler: 0 0% 21%;
+    --timeline-bg: 0 0% 22%;
+    --timeline-track: 0 0% 26%;
+    --timeline-ruler: 0 0% 28%;
     --success: #52cc5a;
     --success-foreground: #061008;
   }
