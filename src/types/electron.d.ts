@@ -99,7 +99,7 @@ declare global {
       saveProjectFile: (payload: { snapshot: unknown; defaultName: string }) => Promise<string | null>;
       openProjectFile: () => Promise<unknown | null>;
 
-      exportVideo: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; resolution: string; captionsASS?: string }) => Promise<{ outputPath: string }>;
+      exportVideo: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number; audioOnly?: boolean }[]; outputPath: string; resolution: string; captionsASS?: string }) => Promise<{ outputPath: string }>;
       exportAudio: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; format: string }) => Promise<{ outputPath: string }>;
       exportGif: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; resolution: string }) => Promise<{ outputPath: string }>;
       savePortableV4: (payload: { snapshot: unknown; defaultName: string }) => Promise<unknown>;

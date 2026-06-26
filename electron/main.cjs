@@ -1451,8 +1451,14 @@ ipcMain.handle("export-gif", async (_event, { clips, outputPath, resolution }) =
 // ══════════════════════════════════════════════════════════════════════════════
 
 ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, captionsASS }) => {
-  const validClips = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
-  if (validClips.length === 0) throw new Error("Nenhum clipe valido");
+  const allValid = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
+  if (allValid.length === 0) throw new Error("Nenhum clipe valido");
+
+  // Separa clipes principais (track 0) dos clipes extra-track (audioOnly = áudio de bg/voiceover)
+  const mainClips = allValid.filter(c => !c.audioOnly);
+  const extraClips = allValid.filter(c => c.audioOnly);
+
+  if (mainClips.length === 0) throw new Error("Nenhum clipe de vídeo na track principal");
 
   const w = resolution === "1080p" ? 1920 : 1280;
   const h = resolution === "1080p" ? 1080 : 720;
@@ -1460,7 +1466,8 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
   const filterParts = [];
   const concatParts = [];
 
-  validClips.forEach((clip, i) => {
+  // ── Track principal: video + audio ──────────────────────────────────────────
+  mainClips.forEach((clip, i) => {
     const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
     inputs.push("-ss", String(clip.trimStart || 0), "-t", String((clip.duration || 5) / speed), "-i", clip.filePath);
     const vLabel = `[v${i}]`;
@@ -1471,25 +1478,45 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
     concatParts.push(vLabel, aLabel);
   });
 
-  const n = validClips.length;
-  const totalDuration = validClips.reduce((sum, c) => sum + (c.duration || 5), 0);
+  const n = mainClips.length;
+  const totalDuration = mainClips.reduce((sum, c) => sum + (c.duration || 5), 0);
 
-  // Legendas ASS: mais confiável que SRT+force_style — estilo embutido no arquivo
+  // ── Tracks extras: áudio extra de vídeos em track > 0 ──────────────────────
+  const extraAudioLabels = [];
+  extraClips.forEach((clip, j) => {
+    const idx = n + j;
+    const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
+    inputs.push("-ss", String(clip.trimStart || 0), "-t", String((clip.duration || 5) / speed), "-i", clip.filePath);
+    const label = `[extra${j}]`;
+    const atempoChain = buildAtempoFilter(speed);
+    filterParts.push(atempoChain ? `[${idx}:a]${atempoChain}${label}` : `[${idx}:a]anull${label}`);
+    extraAudioLabels.push(label);
+  });
+
+  // ── Monta filter_complex ────────────────────────────────────────────────────
   let filterComplex;
   let assTmpPath = null;
+
+  // concat da track principal → [concatv][concata]
+  filterParts.push(`${concatParts.join("")}concat=n=${n}:v=1:a=1[concatv][concata]`);
+
+  // se há áudio extra: amix com concata → [outa]; senão [concata] vira [outa] diretamente
+  const amixInputCount = 1 + extraAudioLabels.length;
+  const audioOutFilter = extraAudioLabels.length > 0
+    ? `[concata]${extraAudioLabels.join("")}amix=inputs=${amixInputCount}:normalize=0[outa]`
+    : `[concata]anull[outa]`;
+  filterParts.push(audioOutFilter);
+
   if (captionsASS && captionsASS.trim()) {
     assTmpPath = path.join(projectTmpDir, `captions_export_${Date.now()}.ass`);
     fs.writeFileSync(assTmpPath, captionsASS, "utf-8");
-    // Caminho escapado para libass no Windows: backslash → slash, C: → C\:
     const escapedAss = assTmpPath.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
-    filterComplex = [
-      ...filterParts,
-      `${concatParts.join("")}concat=n=${n}:v=1:a=1[concatv][outa]`,
-      `[concatv]ass='${escapedAss}'[outv]`,
-    ].join(";");
+    filterParts.push(`[concatv]ass='${escapedAss}'[outv]`);
   } else {
-    filterComplex = [...filterParts, `${concatParts.join("")}concat=n=${n}:v=1:a=1[outv][outa]`].join(";");
+    filterParts.push(`[concatv]anull[outv]`);
   }
+
+  filterComplex = filterParts.join(";");
 
   const args = [...inputs, "-filter_complex", filterComplex, "-map", "[outv]", "-map", "[outa]",
     "-c:v", "libx264", "-crf", "22", "-preset", "fast", "-c:a", "aac", "-b:a", "192k",

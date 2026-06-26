@@ -1905,19 +1905,22 @@ export function App() {
           const isPortable = exportFormat === "v4";
 
           const getClips = () => {
-            // Export usa apenas track 0 de vídeo (composição multi-track não implementada).
-            // Áudio de qualquer track é incluído. Ordem: por startTime.
+            // Vídeos/imagens na track 0 → export normal (video + audio).
+            // Vídeos nas tracks extras → audioOnly: true (áudio mixado sobre o vídeo principal).
+            // Clipes de áudio puro → sempre incluídos em todas as tracks.
             const sorted = [...visualCopies].sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0));
             return sorted
-              .filter((c) => {
-                const asset = assets.find((a) => a.id === c.assetId);
-                if (!asset) return false;
-                if (asset.kind === "video" || asset.kind === "image") return (c.trackIndex ?? 0) === 0;
-                return true; // áudio: todas as tracks
-              })
+              .filter((c) => !!assets.find((a) => a.id === c.assetId))
               .map((c) => {
-                const asset = assets.find((a) => a.id === c.assetId);
-                return { filePath: asset?.filePath || "", trimStart: c.trimStart ?? 0, duration: c.duration ?? 5, speed: c.speed ?? 1 };
+                const asset = assets.find((a) => a.id === c.assetId)!;
+                const isExtraVideoTrack = (asset.kind === "video" || asset.kind === "image") && (c.trackIndex ?? 0) > 0;
+                return {
+                  filePath: asset.filePath || "",
+                  trimStart: c.trimStart ?? 0,
+                  duration: c.duration ?? 5,
+                  speed: c.speed ?? 1,
+                  audioOnly: isExtraVideoTrack,
+                };
               });
           };
 
