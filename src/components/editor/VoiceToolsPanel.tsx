@@ -227,7 +227,7 @@ export function VoiceToolsPanel({ mediaContext, onAddAudioToTimeline, onAddVideo
                 <div className="rounded-lg border border-border/50 bg-background/40 px-2.5 py-1.5 text-[8.5px] text-muted-foreground flex items-center justify-between">
                   <span className="truncate mr-2">{mediaContext.filePath.split(/[/\\]/).pop()}</span>
                   {mediaContext.duration > MAX_LIPSYNC_SEC && (
-                    <span className="shrink-0 text-[7.5px] text-amber-400 font-semibold">cortado para 30s</span>
+                    <span className="shrink-0 text-[7.5px] text-amber-400 font-semibold">cortado para 5min</span>
                   )}
                 </div>
 

@@ -37,7 +37,7 @@ export const toolDescriptions: Record<ToolId, string> = {
   templates: "Usa estruturas prontas para shorts, aulas e depoimentos.",
   ai: "Sugere acoes de IA para acelerar repeticoes, cortes e melhores cenas.",
   restore: "Remove ruido e falhas de camera regenerativamente via filtro bilateral WebGL.",
-  voice: "Sintese de voz por texto (SAPI) e sincronizacao labial Wav2Lip — limite 30s, ~3 min em CPU.",
+  voice: "Sintese de voz por texto (SAPI) e sincronizacao labial Wav2Lip — limite 5 min, ~30 min em CPU.",
   settings: "Configura transcricao local, modelos e preferencias do app.",
 };
 
