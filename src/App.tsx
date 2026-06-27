@@ -1081,6 +1081,16 @@ export function App() {
                                   setCurrentTime(srcTime);
                                 }
                               }}
+                              onLoadedMetadata={(e) => {
+                                const clip = visualCopies
+                                  .filter(c => (c.trackIndex ?? 0) === 0)
+                                  .find(c => currentTime >= (c.startTime ?? 0) && currentTime < (c.startTime ?? 0) + (c.duration ?? 5));
+                                const srcTime = clip
+                                  ? (clip.trimStart ?? 0) + (currentTime - (clip.startTime ?? 0)) / (clip.speed ?? 1)
+                                  : 0;
+                                e.currentTarget.currentTime = srcTime;
+                                if (isPlaying) e.currentTarget.play().catch(() => {});
+                              }}
                               onEnded={() => setIsPlaying(false)}
                             />
                           ) : primaryUrl && primaryAsset?.kind === "image" ? (
