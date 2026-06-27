@@ -748,8 +748,8 @@ function renderVideoClip(
       </div>
       {asset?.waveformPeaks && asset.waveformPeaks.length > 0 && (
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-[45%]">
-          <path d={buildWavePath(asset.waveformPeaks)} fill="rgba(255,255,255,0.60)" />
-          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
+          <path d={buildWavePath(asset.waveformPeaks)} fill="rgba(82,158,80,0.70)" />
+          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(82,158,80,0.22)" strokeWidth="0.5" />
         </svg>
       )}
       {vol !== 0 && (

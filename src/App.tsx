@@ -418,6 +418,27 @@ export function App() {
     videoRef.current.playbackRate = Math.max(0.1, Math.min(16, speed));
   }, [currentTime, visualCopies]);
 
+  // Play/pause do vídeo primário quando isPlaying muda
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (isPlaying) { videoRef.current.play().catch(() => {}); }
+    else { videoRef.current.pause(); }
+  }, [isPlaying]);
+
+  // Seek do vídeo primário quando parado (scrubbing ou primeiro frame)
+  useEffect(() => {
+    if (isPlaying || !videoRef.current) return;
+    const clip = visualCopies
+      .filter(c => (c.trackIndex ?? 0) === 0)
+      .find(c => currentTime >= (c.startTime ?? 0) && currentTime < (c.startTime ?? 0) + (c.duration ?? 5));
+    const srcTime = clip
+      ? (clip.trimStart ?? 0) + (currentTime - (clip.startTime ?? 0)) / (clip.speed ?? 1)
+      : 0;
+    if (Math.abs(videoRef.current.currentTime - srcTime) > 0.1) {
+      videoRef.current.currentTime = srcTime;
+    }
+  }, [currentTime, isPlaying, visualCopies]);
+
   // Sincroniza vídeos de camadas secundárias (trackIndex > 0) com o tempo atual
   useEffect(() => {
     document.querySelectorAll<HTMLVideoElement>("[data-secondary-clip]").forEach((el) => {
@@ -449,8 +470,8 @@ export function App() {
           displayName: result.fileName.replace(/\.[^.]+$/, ""),
           kind: result.kind as ImportedAsset["kind"],
           size: formatFileSize(result.metadata.fileSize),
-          url: result.proxyUrl || result.convertedUrl || "",
-          previewUrl: result.proxyUrl || result.convertedUrl || undefined,
+          url: result.needsProxy ? "" : (result.proxyUrl || result.convertedUrl || ""),
+          previewUrl: result.needsProxy ? undefined : (result.proxyUrl || result.convertedUrl || undefined),
           filePath: result.filePath,
           thumbnailUrl: result.thumbnailUrl || undefined,
           waveformPeaks: result.waveformPeaks || undefined,
@@ -1036,6 +1057,7 @@ export function App() {
                             <video
                               ref={videoRef}
                               src={primaryUrl}
+                              preload="auto"
                               className="absolute object-contain transition-[filter] duration-200"
                               style={primaryStyle}
                               muted={isMuted}
@@ -1072,8 +1094,15 @@ export function App() {
                               alt=""
                             />
                           ) : (
-                            <div className="absolute inset-0 grid place-items-center">
-                              <Film className="size-10 text-white/10" />
+                            <div className="absolute inset-0 grid place-items-center flex-col gap-2">
+                              {primaryAsset && !primaryAsset.previewUrl && importProgress[primaryAsset.filePath ?? ""]?.stage?.startsWith("proxy") ? (
+                                <>
+                                  <div className="size-6 rounded-full border-2 border-white/20 border-t-white/70 animate-spin" />
+                                  <span className="text-[9px] text-white/40 mt-1">Convertendo para preview...</span>
+                                </>
+                              ) : (
+                                <Film className="size-10 text-white/10" />
+                              )}
                             </div>
                           )}
 
