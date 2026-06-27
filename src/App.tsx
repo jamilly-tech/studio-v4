@@ -982,7 +982,7 @@ export function App() {
                 <div className="relative flex flex-1 min-h-0 items-center justify-center bg-[var(--preview-surface)] p-2 overflow-hidden">
                   <div
                     className="relative overflow-hidden rounded bg-[var(--preview-frame)] ring-2 ring-white/25 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_4px_24px_rgba(0,0,0,0.6)]"
-                    style={{ aspectRatio: activeFormat.aspect, maxHeight: "100%", maxWidth: "100%", width: "90%" }}
+                    style={{ aspectRatio: activeFormat.aspect, maxHeight: "100%", maxWidth: "90%", minHeight: 0, minWidth: 0, flex: "0 0 auto" }}
                   >
                     {(() => {
                       // ── Composição multi-camada ──────────────────────────────────────

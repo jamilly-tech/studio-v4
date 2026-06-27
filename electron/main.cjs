@@ -2154,7 +2154,7 @@ ipcMain.handle("media:lipsync", async (_event, videoPath, audioPath, trimStart, 
   const tmpAudio  = audioPath ? null : path.join(projectTmpDir, `ls_a_${Date.now()}.wav`);
   const outputPath = path.join(projectTmpDir, `lipsync_${Date.now()}_${baseName}.mp4`);
 
-  // Corta vídeo no máximo 30s
+  // Corta vídeo até MAX_LIPSYNC_SEC
   const { code: c1 } = await runProcess(ffmpegPath, [
     "-y", "-ss", String(ts), "-t", String(dur),
     "-i", videoPath, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", tmpVideo,
@@ -2176,6 +2176,8 @@ ipcMain.handle("media:lipsync", async (_event, videoPath, audioPath, trimStart, 
   const actualAudio = audioPath || tmpAudio;
   sendProgress("media:progress", { filePath: videoPath, stage: "lipsync", percent: 5 });
 
+  const TIMEOUT_MS = (MAX_LIPSYNC_SEC / 60) * 7 * 60 * 1000 + 60_000; // ~7min CPU/min + margem
+
   return new Promise(resolve => {
     // shell: false — evita interpretação de metacaracteres do shell nos caminhos
     const proc = spawn("python", [
@@ -2183,28 +2185,48 @@ ipcMain.handle("media:lipsync", async (_event, videoPath, audioPath, trimStart, 
       "--face", tmpVideo, "--audio", actualAudio, "--out", outputPath,
     ], { stdio: ["ignore","pipe","pipe"], windowsHide: true });
 
+    const cleanup = () => {
+      try { fs.unlinkSync(tmpVideo); } catch {}
+      if (tmpAudio) { try { fs.unlinkSync(tmpAudio); } catch {} }
+    };
+
+    // Timeout: mata o processo se ultrapassar o limite esperado
+    const timer = setTimeout(() => {
+      proc.kill("SIGKILL");
+      cleanup();
+      resolve({ error: `Wav2Lip excedeu o tempo limite (${Math.round(TIMEOUT_MS / 60000)} min). Tente um clipe mais curto.` });
+    }, TIMEOUT_MS);
+
     let errBuf = "";
+    const MAX_BUF = 8000;
     proc.stderr.on("data", d => {
-      errBuf += d.toString();
+      const chunk = d.toString();
+      errBuf = (errBuf + chunk).slice(-MAX_BUF); // mantém só os últimos 8k chars
       const m = errBuf.match(/(\d+)%\|/g);
       if (m) {
-        const pct = Math.min(94, 5 + parseInt(m[m.length-1]) * 0.9);
+        const pct = Math.min(94, 5 + parseInt(m[m.length - 1]) * 0.89);
         sendProgress("media:progress", { filePath: videoPath, stage: "lipsync", percent: pct });
       }
     });
     proc.stdout.on("data", () => {});
 
     proc.on("close", code => {
-      try { fs.unlinkSync(tmpVideo); } catch {}
-      if (tmpAudio) { try { fs.unlinkSync(tmpAudio); } catch {} }
-      if (code === 0 && fs.existsSync(outputPath)) {
+      clearTimeout(timer);
+      cleanup();
+      if (code === 0 && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
         sendProgress("media:progress", { filePath: videoPath, stage: "lipsync-done", percent: 100 });
         resolve({ outputPath, url: `file://${outputPath.replace(/\\/g, "/")}` });
+      } else if (code === 0) {
+        resolve({ error: "Wav2Lip concluiu mas não gerou o arquivo de saída. Verifique se o rosto está visível no vídeo." });
       } else {
-        resolve({ error: `Wav2Lip falhou (${code}):\n${errBuf.slice(-400)}` });
+        resolve({ error: `Wav2Lip falhou (código ${code}):\n${errBuf.slice(-600)}` });
       }
     });
-    proc.on("error", e => resolve({ error: String(e?.message || e) }));
+    proc.on("error", e => {
+      clearTimeout(timer);
+      cleanup();
+      resolve({ error: String(e?.message || e) });
+    });
   });
 });
 
