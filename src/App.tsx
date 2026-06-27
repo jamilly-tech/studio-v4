@@ -981,7 +981,7 @@ export function App() {
                 {/* Preview area */}
                 <div className="relative flex flex-1 min-h-0 items-center justify-center bg-[var(--preview-surface)] p-2 overflow-hidden">
                   <div
-                    className="relative overflow-hidden rounded bg-[var(--preview-frame)] ring-1 ring-white/[0.08]"
+                    className="relative overflow-hidden rounded bg-[var(--preview-frame)] ring-2 ring-white/25 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_4px_24px_rgba(0,0,0,0.6)]"
                     style={{ aspectRatio: activeFormat.aspect, maxHeight: "100%", maxWidth: "100%", width: "90%" }}
                   >
                     {(() => {
@@ -1243,7 +1243,11 @@ export function App() {
 
                               {/* Legenda de zona segura */}
                               <div className="absolute inset-x-0 flex justify-center pointer-events-none" style={{ bottom: `${CAPTION_SAFE_ZONE[activeFormat.id] ?? 12}%` }}>
-                                <div className="border-t border-dashed border-yellow-400/40 w-[80%]" />
+                                <div className="w-[88%] flex items-center gap-1.5">
+                                  <div className="flex-1 border-t border-dashed border-yellow-300/70" />
+                                  <span style={{ fontSize: "6px", fontWeight: 700, color: "rgba(253,224,71,0.8)", letterSpacing: "0.08em", whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>ZONA SEGURA</span>
+                                  <div className="flex-1 border-t border-dashed border-yellow-300/70" />
+                                </div>
                               </div>
                             </>
                           )}
@@ -1282,8 +1286,12 @@ export function App() {
                                 </div>
                               </div>
                               {/* Safe zone line */}
-                              <div className="absolute inset-x-0 flex justify-center" style={{ bottom: `${CAPTION_SAFE_ZONE[activeFormat.id] ?? 12}%` }}>
-                                <div className="border-t border-dashed border-yellow-400/40 w-[90%]" />
+                              <div className="absolute inset-x-0 flex justify-center pointer-events-none" style={{ bottom: `${CAPTION_SAFE_ZONE[activeFormat.id] ?? 12}%` }}>
+                                <div className="w-[90%] flex items-center gap-1.5">
+                                  <div className="flex-1 border-t border-dashed border-yellow-300/70" />
+                                  <span style={{ fontSize: "6px", fontWeight: 700, color: "rgba(253,224,71,0.8)", letterSpacing: "0.08em", whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>ZONA SEGURA</span>
+                                  <div className="flex-1 border-t border-dashed border-yellow-300/70" />
+                                </div>
                               </div>
                             </>
                           )}

@@ -2128,8 +2128,8 @@ Write-Output 'done'
   });
 });
 
-// ── Lip Sync — Wav2Lip via Python (limite: 30s de vídeo por vez) ───────────
-const MAX_LIPSYNC_SEC = 30;
+// ── Lip Sync — Wav2Lip via Python (limite: 5min de vídeo por vez) ──────────
+const MAX_LIPSYNC_SEC = 300;
 
 ipcMain.handle("media:lipsync-status", async () => {
   return new Promise(resolve => {

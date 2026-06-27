@@ -160,64 +160,21 @@ export function DrivePanel({
       {credentialsOk === false && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 overflow-hidden">
           <div className="bg-amber-500/15 px-3 py-2 flex items-center gap-2">
-            <div className="size-4 rounded-full bg-amber-400/20 grid place-items-center shrink-0">
-              <span className="text-[9px] font-black text-amber-400">!</span>
-            </div>
-            <p className="text-[10px] font-bold text-amber-400">Configure o Google Drive em 5 passos</p>
+            <span className="text-[9px] font-black text-amber-400">!</span>
+            <p className="text-[10px] font-bold text-amber-400">Configuração necessária — 3 minutos</p>
           </div>
-
-          <div className="flex flex-col divide-y divide-amber-500/10">
-            {[
-              {
-                n: 1,
-                title: "Abra o Google Cloud Console",
-                desc: "Acesse console.cloud.google.com e faça login com sua conta Google.",
-                tag: "console.cloud.google.com",
-              },
-              {
-                n: 2,
-                title: "Crie um projeto",
-                desc: 'Clique em "Selecionar projeto" → "Novo projeto". Dê qualquer nome, ex: Studio V4.',
-              },
-              {
-                n: 3,
-                title: "Ative a API do Drive",
-                desc: 'Menu lateral → "APIs e serviços" → "Biblioteca" → busque "Google Drive API" → clique em Ativar.',
-              },
-              {
-                n: 4,
-                title: "Crie credenciais OAuth 2.0",
-                desc: '"APIs e serviços" → "Credenciais" → "+ Criar credenciais" → "ID do cliente OAuth". Tipo: App para computador. Copie o Client ID e o Client Secret.',
-              },
-              {
-                n: 5,
-                title: "Preencha o arquivo .env",
-                desc: "Na pasta do Studio V4, abra o arquivo .env e adicione:",
-                code: "GOOGLE_CLIENT_ID=cole_aqui\nGOOGLE_CLIENT_SECRET=cole_aqui",
-              },
-            ].map(({ n, title, desc, tag, code }) => (
-              <div key={n} className="px-3 py-2 flex gap-2.5">
-                <div className="mt-0.5 size-4 rounded-full bg-amber-400/20 grid place-items-center shrink-0">
-                  <span className="text-[8px] font-black text-amber-400">{n}</span>
-                </div>
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <p className="text-[10px] font-semibold text-amber-300">{title}</p>
-                  <p className="text-[9px] text-amber-200/60 leading-relaxed">{desc}</p>
-                  {tag && (
-                    <span className="mt-0.5 inline-flex text-[8px] font-mono text-amber-400/70 bg-black/20 rounded px-1.5 py-0.5 w-fit">{tag}</span>
-                  )}
-                  {code && (
-                    <code className="mt-1 block rounded bg-black/30 px-2 py-1.5 text-[8px] text-amber-200/80 font-mono whitespace-pre leading-relaxed">{code}</code>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="px-3 py-2 bg-black/20 border-t border-amber-500/10">
-            <p className="text-[8px] text-amber-300/50 leading-relaxed">
-              Depois de salvar o .env, reinicie o Studio V4. O botão de conectar ficara disponivel.
+          <div className="px-3 py-2.5 flex flex-col gap-2">
+            <p className="text-[9px] text-amber-200/70 leading-relaxed">
+              <strong className="text-amber-300">1.</strong> Acesse <span className="font-mono text-amber-400/80 bg-black/20 rounded px-1">console.cloud.google.com</span> → crie um projeto → ative <strong className="text-amber-300">Google Drive API</strong>.
             </p>
+            <p className="text-[9px] text-amber-200/70 leading-relaxed">
+              <strong className="text-amber-300">2.</strong> Credenciais → "+ Criar" → <strong className="text-amber-300">ID do cliente OAuth</strong> → Tipo: <em>App para computador</em> → copie o Client ID e Secret.
+            </p>
+            <p className="text-[9px] text-amber-200/70 leading-relaxed">
+              <strong className="text-amber-300">3.</strong> Na pasta do Studio V4, abra o arquivo <span className="font-mono text-amber-400/80 bg-black/20 rounded px-1">.env</span> e cole:
+            </p>
+            <code className="block rounded bg-black/30 px-2 py-1.5 text-[8px] text-amber-200/80 font-mono whitespace-pre leading-relaxed">GOOGLE_CLIENT_ID=cole_aqui{"\n"}GOOGLE_CLIENT_SECRET=cole_aqui</code>
+            <p className="text-[8px] text-amber-300/50">Salve o .env e reinicie o Studio V4.</p>
           </div>
         </div>
       )}

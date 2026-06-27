@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Mic, Volume2, Zap, Loader2, CheckCircle, AlertCircle, X } from "lucide-react";
 
 const MAX_CHARS = 400;
-const MAX_LIPSYNC_SEC = 30;
+const MAX_LIPSYNC_SEC = 300;
 
 export interface MediaCtx {
   filePath: string;
@@ -99,7 +99,7 @@ export function VoiceToolsPanel({ mediaContext, onAddAudioToTimeline, onAddVideo
   }
 
   const clipSec = mediaContext ? Math.min(mediaContext.duration, MAX_LIPSYNC_SEC) : MAX_LIPSYNC_SEC;
-  const estMin  = Math.max(1, Math.ceil(clipSec * 6 / 60));
+  const estMin  = Math.max(1, Math.ceil(clipSec * 6 / 60)); // ~6min CPU por min de vídeo
 
   return (
     <div className="flex flex-col gap-3">
@@ -195,7 +195,7 @@ export function VoiceToolsPanel({ mediaContext, onAddAudioToTimeline, onAddVideo
         {/* Limites sempre visíveis */}
         <div className="rounded-lg bg-muted/30 border border-border/40 px-2.5 py-2 flex flex-col gap-0.5">
           <p className="text-[8px] font-bold text-muted-foreground/70 uppercase tracking-wide mb-0.5">Limites desta ferramenta</p>
-          <p className="text-[7.5px] text-muted-foreground/60">Máximo <strong className="text-foreground/70">30 segundos</strong> de vídeo por processamento</p>
+          <p className="text-[7.5px] text-muted-foreground/60">Máximo <strong className="text-foreground/70">5 minutos</strong> de vídeo por processamento</p>
           <p className="text-[7.5px] text-muted-foreground/60">Tempo estimado: <strong className="text-foreground/70">~{estMin} min</strong> em CPU (sem GPU)</p>
           <p className="text-[7.5px] text-muted-foreground/60">Melhor resultado: rosto frontal, boa iluminação</p>
           <p className="text-[7.5px] text-muted-foreground/60">Gratuito e local — funciona em qualquer PC com Python</p>
