@@ -89,7 +89,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "v4company",
+      "owner": "jamilly-tech",
       "repo": "studio-v4"
     },
     "nsis": {
