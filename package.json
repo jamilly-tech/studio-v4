@@ -1,6 +1,6 @@
 {
   "name": "studio-v4",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Studio V4 — Editor de vídeo desktop com IA, timeline e integração Google Drive",
   "private": true,
   "main": "electron/main.cjs",
