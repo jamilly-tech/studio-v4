@@ -13,6 +13,7 @@ import { DrivePanel } from "@/components/editor/DrivePanel";
 import { CaptionEditorPanel } from "@/components/editor/CaptionEditorPanel";
 import { PresetsPanel } from "@/components/editor/PresetsPanel";
 import { EffectsPanel } from "@/components/editor/EffectsPanel";
+import { VoiceToolsPanel } from "@/components/editor/VoiceToolsPanel";
 import { formatFileSize } from "@/utils/format";
 import { createLocalId } from "@/utils/id";
 import { serializeCaptionsToASS } from "@/utils/captions";
@@ -73,6 +74,7 @@ const sidebarTools: { id: ToolId; label: string; icon: typeof Film; tips: string
   { id: "captions", label: "Legendas", icon: Captions,          tips: ["Transcrição automática por IA", "PT-BR, inglês, espanhol", "5 presets de estilo prontos"] },
   { id: "effects",  label: "Efeitos",  icon: Wand2,             tips: ["14 efeitos visuais", "Brilho, contraste, cinema, neon", "Preview ao vivo antes de aplicar"] },
   { id: "ai",       label: "Corte IA", icon: Scissors,          tips: ["Corte limpo — remove silêncios", "Detecta takes repetidos", "Análise automática do áudio"] },
+  { id: "voice",    label: "Voz IA",   icon: Mic,               tips: ["Síntese de narração por texto", "Sincronização labial (Wav2Lip)", "Funciona em qualquer PC"] },
   { id: "settings", label: "Config",   icon: Settings,          tips: ["Configurações de export", "Resolução, formato, qualidade", "Atalhos e preferências"] },
 ];
 
@@ -84,6 +86,7 @@ const SIDEBAR_DESCRIPTIONS: Record<string, string> = {
   captions: "Legendas automáticas",
   effects:  "Efeitos visuais",
   ai:       "Corte inteligente por IA",
+  voice:    "Voz IA — síntese e lip sync",
   settings: "Configurações",
 };
 
@@ -143,7 +146,7 @@ export function App() {
   const [wmRemoving, setWmRemoving] = useState(false);
   const [wmProgress, setWmProgress] = useState(0);
   const [exportResolution, setExportResolution] = useState<"720p" | "1080p">("1080p");
-  const [exportFormat, setExportFormat] = useState<"v4" | "mp4" | "mov" | "gif" | "mp3" | "wav">("mp4");
+  const [exportFormat, setExportFormat] = useState<"v4" | "mp4" | "mov" | "gif" | "mp3" | "wav" | "srt">("mp4");
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [presetIntensity, setPresetIntensity] = useState(100);
@@ -243,7 +246,9 @@ export function App() {
     },
     activeEffect,
     activeEffectCss,
-  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionBgPadding, captionShadow, captionOutline, captionY, activeEffect, activeEffectCss]);
+    activeFormatId: activeFormat.id,
+    captionChrome,
+  }), [projectName, assets, visualCopies, captionSegments, captionExportEnabled, captionFont, captionFontSize, captionBold, captionItalic, captionColor, captionBgColor, captionBgOpacity, captionBgPadding, captionShadow, captionOutline, captionY, activeEffect, activeEffectCss, activeFormat.id, captionChrome]);
 
   // Contexto de mídia ativo para transcrição (clipe selecionado ou asset selecionado)
   const activeMediaContext = useMemo(() => {
@@ -262,7 +267,7 @@ export function App() {
     };
   }, [selectedCopyId, selectedAssetId, visualCopies, assets]);
 
-  const handleLoadProject = useCallback(async (snapshot: unknown) => {
+  const handleLoadProject = useCallback(async (snapshot: unknown, sourceFilePath?: string) => {
     const data = snapshot as any;
     if (data.projectName) setProjectName(data.projectName);
     if (data.visualCopies) setVisualCopies(data.visualCopies);
@@ -289,6 +294,14 @@ export function App() {
     if (data.captionExportEnabled !== undefined) setCaptionExportEnabled(data.captionExportEnabled as boolean);
     if (data.activeEffect) setActiveEffect(data.activeEffect as string);
     if (data.activeEffectCss) setActiveEffectCss(data.activeEffectCss as string);
+    if (data.activeFormatId) {
+      const fmt = formatPresets.find(f => f.id === data.activeFormatId);
+      if (fmt) setActiveFormat(fmt);
+    }
+    if (data.captionChrome) {
+      const validChrome = ["reels", "tiktok", "story", "youtube", "off"] as const;
+      if (validChrome.includes(data.captionChrome)) setCaptionChrome(data.captionChrome as typeof validChrome[number]);
+    }
 
     if (data.assets && Array.isArray(data.assets)) {
       const missing: string[] = [];
@@ -311,12 +324,15 @@ export function App() {
 
       // Atualiza projetos recentes
       if (data.projectName) {
+        const firstThumb = (data.assets as any[] | undefined)?.find((a: any) => a.thumbnailUrl)?.thumbnailUrl;
         const entry = {
           id: createLocalId("proj"),
           projectName: data.projectName,
           name: data.projectName,
           meta: new Date().toLocaleDateString("pt-BR"),
           updatedAt: new Date().toISOString(),
+          thumbnailUrl: firstThumb || undefined,
+          filePath: sourceFilePath || undefined,
         };
         const prev = ((await window.studioV4?.readRecentProjects?.()) as any[] ?? [])
           .filter((r: any) => (r.projectName || r.name) !== data.projectName)
@@ -402,6 +418,18 @@ export function App() {
     videoRef.current.playbackRate = Math.max(0.1, Math.min(16, speed));
   }, [currentTime, visualCopies]);
 
+  // Sincroniza vídeos de camadas secundárias (trackIndex > 0) com o tempo atual
+  useEffect(() => {
+    document.querySelectorAll<HTMLVideoElement>("[data-secondary-clip]").forEach((el) => {
+      const srcTime = parseFloat(el.dataset.srcTime ?? "0");
+      if (isFinite(srcTime) && Math.abs(el.currentTime - srcTime) > 0.15) {
+        el.currentTime = srcTime;
+      }
+      if (isPlaying) { el.play().catch(() => {}); }
+      else { el.pause(); }
+    });
+  }, [currentTime, isPlaying]);
+
   const ingestFiles = useCallback(async (filePaths: string[]) => {
     if (!window.studioV4?.media?.ingest) return;
     setImporting(true);
@@ -449,9 +477,13 @@ export function App() {
   }, [addAssets]);
 
   const handleImport = useCallback(async () => {
-    const paths = await window.studioV4?.openFileDialog?.();
+    if (!window.studioV4?.openFileDialog) {
+      addToast("Abra pelo app instalado para importar arquivos.", "error");
+      return;
+    }
+    const paths = await window.studioV4.openFileDialog();
     if (paths && paths.length > 0) await ingestFiles(paths);
-  }, [ingestFiles]);
+  }, [ingestFiles, addToast]);
 
   const handleDrop = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
@@ -522,7 +554,7 @@ export function App() {
     await ingestFiles([result.path]);
     const newAsset = useAssetsStore.getState().assets.find((a) => a.filePath === result.path || a.url === result.path);
     if (newAsset) {
-      const copy = createTimelineCopyForAsset(newAsset, startTime, "manual", 1);
+      const copy = createTimelineCopyForAsset(newAsset, startTime, "manual", 0);
       setVisualCopies((prev) => [...prev, copy]);
     }
   }, [ingestFiles, setVisualCopies]);
@@ -547,6 +579,7 @@ export function App() {
         window.studioV4?.saveProjectFile?.({ snapshot: snap, defaultName: projectName }).then((savedPath) => {
           if (savedPath) {
             window.studioV4?.readRecentProjects?.().then((prev) => {
+              const firstThumb = assets.find(a => a.thumbnailUrl)?.thumbnailUrl;
               const entry = {
                 id: createLocalId("proj"),
                 projectName,
@@ -554,6 +587,7 @@ export function App() {
                 meta: new Date().toLocaleDateString("pt-BR"),
                 updatedAt: new Date().toISOString(),
                 filePath: savedPath,
+                thumbnailUrl: firstThumb || undefined,
               };
               const list = [entry, ...((prev as any[] ?? []).filter((r: any) => (r.projectName || r.name) !== projectName).slice(0, 9))];
               window.studioV4?.writeRecentProjects?.(list);
@@ -639,11 +673,22 @@ export function App() {
             googleProfile={googleProfile}
             projectName={projectName}
             assetCount={assets.length}
+            lastThumbnailUrl={assets.find(a => a.thumbnailUrl)?.thumbnailUrl}
             recentVideos={recentVideos}
             onDrive={() => setDialog("drive")}
             onEnter={() => setScreen("editor")}
             onNewProject={() => { handleMenuCommand("new-project"); setScreen("editor"); }}
-            onOpenProject={(name) => { setProjectName(name); setScreen("editor"); }}
+            onOpenFile={() => handleMenuCommand("open-file")}
+            onOpenProject={async (name, filePath) => {
+              if (filePath && window.studioV4?.loadProjectFile) {
+                try {
+                  const data = await window.studioV4.loadProjectFile(filePath);
+                  if (data) { await handleLoadProject(data, filePath); setScreen("editor"); return; }
+                } catch {}
+              }
+              setProjectName(name);
+              setScreen("editor");
+            }}
           />
         </div>
       </EditorShell>
@@ -895,93 +940,181 @@ export function App() {
                     </button>
                   </div>
 
-                  <span className="text-[9px] text-muted-foreground font-mono">{activeFormat.size}</span>
+                  {/* Platform preview quick-toggle */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex rounded overflow-hidden border border-border">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const chromeMap: Record<string, "reels"|"tiktok"|"story"|"youtube"|"off"> = {
+                            reels: "reels", tiktok: "tiktok", story: "story",
+                            youtube: "youtube", wide: "youtube", feed: "off",
+                          };
+                          setCaptionChrome(chromeMap[activeFormat.id] ?? "reels");
+                        }}
+                        className={`px-2 py-0.5 text-[8px] font-bold transition ${
+                          captionChrome !== "off"
+                            ? "bg-primary text-white"
+                            : "text-muted-foreground hover:bg-muted/40"
+                        }`}
+                        title="Mostrar overlay da rede social no preview"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCaptionChrome("off")}
+                        className={`px-1.5 py-0.5 text-[8px] font-bold transition ${
+                          captionChrome === "off"
+                            ? "bg-muted/60 text-muted-foreground"
+                            : "text-muted-foreground hover:bg-muted/40"
+                        }`}
+                        title="Sem overlay"
+                      >
+                        Off
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-muted-foreground font-mono">{activeFormat.size}</span>
+                  </div>
                 </div>
 
                 {/* Preview area */}
                 <div className="relative flex flex-1 min-h-0 items-center justify-center bg-[var(--preview-surface)] p-2 overflow-hidden">
                   <div
-                    className="relative overflow-hidden rounded bg-[var(--preview-frame)]"
+                    className="relative overflow-hidden rounded bg-[var(--preview-frame)] ring-1 ring-white/[0.08]"
                     style={{ aspectRatio: activeFormat.aspect, maxHeight: "100%", maxWidth: "100%", width: "90%" }}
                   >
-                    {splitScreen && previewUrl ? (
-                      <div className="absolute inset-0 flex flex-col">
-                        <div className="flex-1 overflow-hidden border-b border-white/20">
-                          <video src={previewUrl} className="h-full w-full object-cover" style={{ filter: blendFilter(activeEffectCss, presetIntensity) }} muted />
-                        </div>
-                        <div className="flex-1 overflow-hidden">
-                          <video src={previewUrl} className="h-full w-full object-cover" style={{ filter: blendFilter(activeEffectCss, presetIntensity), transform: "scaleX(-1)" }} muted />
-                        </div>
-                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-white/40 cursor-row-resize" />
-                      </div>
-                    ) : previewUrl && (previewAsset?.kind === "video" || previewAsset?.kind === "audio") ? (
-                      <video
-                        ref={videoRef}
-                        src={previewUrl}
-                        className="absolute object-contain transition-[filter] duration-200"
-                        style={(() => {
-                          const activeClip = visualCopies.find(c => {
-                            const s = c.startTime ?? 0;
-                            const d = c.duration ?? 5;
-                            return currentTime >= s && currentTime <= s + d;
-                          });
-                          const opacity = activeClip?.opacity != null ? activeClip.opacity / 100 : 1;
-                          const brightness = activeClip?.brightness != null ? activeClip.brightness / 100 : 1;
-                          const clipFilter = brightness !== 1 ? `brightness(${brightness})` : "";
-                          const blended = blendFilter(activeEffectCss, presetIntensity);
-                          const combinedFilter = [blended !== "none" ? blended : "", clipFilter].filter(Boolean).join(" ") || "none";
-                          if (previewQuality === "low") {
-                            return {
-                              top: 0, left: 0, width: "25%", height: "25%",
-                              transformOrigin: "top left",
-                              transform: "scale(4)",
-                              imageRendering: "pixelated" as const,
-                              filter: combinedFilter,
-                              opacity,
-                            };
-                          }
-                          return {
-                            inset: 0, width: "100%", height: "100%",
-                            filter: combinedFilter,
-                            opacity,
-                            transform: `translate(${videoTransform.x}px, ${videoTransform.y}px) scale(${videoTransform.scale / 100})`,
-                          };
-                        })()}
-                        muted={isMuted}
-                        onTimeUpdate={(e) => {
-                          const srcTime = e.currentTarget.currentTime;
-                          const pos = resolveAtTime(visualCopies, currentTime);
-                          if (pos && pos.clip) {
-                            const tlTime = sourceTimeToTimeline(pos.clip, srcTime);
-                            const duration = getTimelineDuration(visualCopies);
-                            if (duration > 0 && tlTime >= duration) {
-                              e.currentTarget.pause();
-                              setIsPlaying(false);
-                              setCurrentTime(duration);
-                            } else {
-                              setCurrentTime(Math.max(0, tlTime));
+                    {(() => {
+                      // ── Composição multi-camada ──────────────────────────────────────
+                      // Todos os clips que cobrem o currentTime, ordenados por trackIndex
+                      const layerClips = visualCopies
+                        .filter(c => {
+                          const s = c.startTime ?? 0;
+                          const d = c.duration ?? 5;
+                          return currentTime >= s && currentTime < s + d;
+                        })
+                        .sort((a, b) => (a.trackIndex ?? 0) - (b.trackIndex ?? 0));
+
+                      const primaryClip = layerClips[0] ?? null;
+                      const secondaryClips = layerClips.slice(1);
+
+                      // Resolve asset primário: clip ativo no track 0, senão asset selecionado
+                      const primaryAsset = primaryClip
+                        ? (assets.find(a => a.id === primaryClip.assetId) ?? previewAsset)
+                        : previewAsset;
+                      const primaryUrl = primaryAsset?.previewUrl || primaryAsset?.url || "";
+
+                      // ── Split screen usa apenas camada primária ──────────────────────
+                      if (splitScreen && primaryUrl) {
+                        return (
+                          <div className="absolute inset-0 flex flex-col">
+                            <div className="flex-1 overflow-hidden border-b border-white/20 flex items-center justify-center bg-black">
+                              <video src={primaryUrl} className="h-full w-full object-contain" style={{ filter: blendFilter(activeEffectCss, presetIntensity) }} muted />
+                            </div>
+                            <div className="flex-1 overflow-hidden flex items-center justify-center bg-black">
+                              <video src={primaryUrl} className="h-full w-full object-contain" style={{ filter: blendFilter(activeEffectCss, presetIntensity), transform: "scaleX(-1)" }} muted />
+                            </div>
+                            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-white/40 cursor-row-resize" />
+                          </div>
+                        );
+                      }
+
+                      // ── Estilo da camada primária ────────────────────────────────────
+                      const primaryOpacity = primaryClip?.opacity != null ? primaryClip.opacity / 100 : 1;
+                      const primaryBrightness = primaryClip?.brightness != null ? primaryClip.brightness / 100 : 1;
+                      const primaryClipFilter = primaryBrightness !== 1 ? `brightness(${primaryBrightness})` : "";
+                      const blended = blendFilter(activeEffectCss, presetIntensity);
+                      const primaryCombinedFilter = [blended !== "none" ? blended : "", primaryClipFilter].filter(Boolean).join(" ") || "none";
+                      const primaryStyle = previewQuality === "low"
+                        ? { top: 0, left: 0, width: "25%", height: "25%", transformOrigin: "top left", transform: "scale(4)", imageRendering: "pixelated" as const, filter: primaryCombinedFilter, opacity: primaryOpacity }
+                        : { top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", filter: primaryCombinedFilter, opacity: primaryOpacity, transform: `translate(${videoTransform.x}px, ${videoTransform.y}px) scale(${videoTransform.scale / 100})` };
+
+                      return (
+                        <>
+                          {/* Camada primária (track 0 ou asset selecionado) */}
+                          {primaryUrl && (primaryAsset?.kind === "video" || primaryAsset?.kind === "audio") ? (
+                            <video
+                              ref={videoRef}
+                              src={primaryUrl}
+                              className="absolute object-contain transition-[filter] duration-200"
+                              style={primaryStyle}
+                              muted={isMuted}
+                              onTimeUpdate={(e) => {
+                                const srcTime = e.currentTarget.currentTime;
+                                // Usa primaryClip da closure — tracking só no track 0
+                                const pos = primaryClip
+                                  ? { clip: primaryClip, sourceTime: srcTime }
+                                  : resolveAtTime(visualCopies.filter(c => (c.trackIndex ?? 0) === 0), currentTime);
+                                if (pos && pos.clip) {
+                                  const tlTime = sourceTimeToTimeline(pos.clip, srcTime);
+                                  const duration = getTimelineDuration(visualCopies);
+                                  if (duration > 0 && tlTime >= duration) {
+                                    e.currentTarget.pause();
+                                    setIsPlaying(false);
+                                    setCurrentTime(duration);
+                                  } else {
+                                    setCurrentTime(Math.max(0, tlTime));
+                                  }
+                                } else {
+                                  setCurrentTime(srcTime);
+                                }
+                              }}
+                              onEnded={() => setIsPlaying(false)}
+                            />
+                          ) : primaryUrl && primaryAsset?.kind === "image" ? (
+                            <img
+                              src={primaryUrl}
+                              className="absolute inset-0 h-full w-full object-contain transition-[filter] duration-200"
+                              style={{
+                                filter: blended !== "none" ? blended : undefined,
+                                transform: `translate(${videoTransform.x}px, ${videoTransform.y}px) scale(${videoTransform.scale / 100})`,
+                              }}
+                              alt=""
+                            />
+                          ) : (
+                            <div className="absolute inset-0 grid place-items-center">
+                              <Film className="size-10 text-white/10" />
+                            </div>
+                          )}
+
+                          {/* Camadas secundárias (tracks 1+) sobrepostas */}
+                          {secondaryClips.map((clip) => {
+                            const asset = assets.find(a => a.id === clip.assetId);
+                            if (!asset) return null;
+                            const url = asset.previewUrl || asset.url;
+                            if (!url) return null;
+                            const srcTime = (clip.trimStart ?? 0) + (currentTime - (clip.startTime ?? 0)) / (clip.speed ?? 1);
+                            const opacity = (clip.opacity ?? 100) / 100;
+                            const zIdx = (clip.trackIndex ?? 1) + 1;
+                            if (asset.kind === "video" || asset.kind === "audio") {
+                              return (
+                                <video
+                                  key={clip.id}
+                                  data-secondary-clip={clip.id}
+                                  data-src-time={srcTime.toFixed(3)}
+                                  src={url}
+                                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                                  style={{ opacity, zIndex: zIdx }}
+                                  muted
+                                />
+                              );
                             }
-                          } else {
-                            setCurrentTime(srcTime);
-                          }
-                        }}
-                        onEnded={() => setIsPlaying(false)}
-                      />
-                    ) : previewUrl && previewAsset?.kind === "image" ? (
-                      <img
-                        src={previewUrl}
-                        className="absolute inset-0 h-full w-full object-contain transition-[filter] duration-200"
-                        style={{
-                          filter: blendFilter(activeEffectCss, presetIntensity),
-                          transform: `translate(${videoTransform.x}px, ${videoTransform.y}px) scale(${videoTransform.scale / 100})`,
-                        }}
-                        alt=""
-                      />
-                    ) : (
-                      <div className="absolute inset-0 grid place-items-center">
-                        <Film className="size-10 text-white/10" />
-                      </div>
-                    )}
+                            if (asset.kind === "image") {
+                              return (
+                                <img
+                                  key={clip.id}
+                                  src={url}
+                                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                                  style={{ opacity, zIndex: zIdx }}
+                                  alt=""
+                                />
+                              );
+                            }
+                            return null;
+                          })}
+                        </>
+                      );
+                    })()}
 
                     {/* Caption overlay — arrastavel */}
                     {captionSegments.length > 0 && (() => {
@@ -1033,8 +1166,8 @@ export function App() {
                       );
                     })()}
 
-                    {/* Social chrome overlay — visível apenas no painel Legendas */}
-                    {activeTool === "captions" && (() => {
+                    {/* Social chrome overlay — plataforma selecionada */}
+                    {(() => {
                       const fmt = captionChrome;
                       if (fmt === "off") return null;
                       const isVertical = fmt === "reels" || fmt === "tiktok" || fmt === "story";
@@ -1551,23 +1684,6 @@ export function App() {
                       </button>
                     </div>
 
-                    {/* Seletor de chrome social */}
-                    <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2">
-                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Preview de Rede</p>
-                      <div className="grid grid-cols-5 gap-1">
-                        {([ ["reels", "Reels"], ["tiktok", "TikTok"], ["story", "Story"], ["youtube", "YouTube"], ["off", "Off"] ] as const).map(([id, label]) => (
-                          <button
-                            key={id}
-                            type="button"
-                            onClick={() => setCaptionChrome(id)}
-                            className={`rounded text-[8px] font-bold py-1 px-0.5 transition border ${captionChrome === id ? "bg-primary border-primary text-white" : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"}`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
                     {/* Presets de formato */}
                     <div className="rounded-lg border border-border bg-card/50 p-2.5 flex flex-col gap-2 mb-1">
                       <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wider">Presets de Formato</p>
@@ -1858,6 +1974,12 @@ export function App() {
                         </p>
                       </div>
                     </div>
+                  ) : activeTool === "voice" ? (
+                    <VoiceToolsPanel
+                      mediaContext={activeMediaContext}
+                      onAddAudioToTimeline={handleAddAudioToTimeline}
+                      onAddVideoToTimeline={handleAddAudioToTimeline}
+                    />
                   ) : activeTool === "audio" ? (
                     <AudioToolsPanel asset={previewAsset} onAddAudioToTimeline={handleAddAudioToTimeline} />
                   ) : activeTool === "media" && !previewAsset ? (
@@ -1930,10 +2052,10 @@ export function App() {
                   if (pos) videoRef.current.currentTime = pos.sourceTime;
                 }
               }}
-              onDropAsset={(assetId, atTime) => {
+              onDropAsset={(assetId, atTime, trackIndex = 0) => {
                 const asset = assets.find((a) => a.id === assetId);
                 if (!asset) return;
-                const copy = createTimelineCopyForAsset(asset, atTime);
+                const copy = createTimelineCopyForAsset(asset, atTime, "manual", trackIndex);
                 setVisualCopies((prev) => [...prev, copy]);
               }}
             />
@@ -1943,33 +2065,36 @@ export function App() {
         {/* ── Modal: Exportar ── */}
         {dialog === "export" && (() => {
           const FORMATS = [
-            { id: "v4"  as const, label: ".v4 Portável", sub: "Editável em qualquer PC" },
             { id: "mp4" as const, label: "MP4",          sub: "H.264 · Para publicar"  },
             { id: "mov" as const, label: "MOV",          sub: "H.264 · Para edição"    },
+            { id: "mp3" as const, label: "Só Áudio",     sub: "MP3 192k"               },
+            { id: "srt" as const, label: "Só Legenda",   sub: "Arquivo .SRT"           },
             { id: "gif" as const, label: "GIF",          sub: "Animação"               },
-            { id: "mp3" as const, label: "MP3",          sub: "Áudio comprimido"       },
-            { id: "wav" as const, label: "WAV",          sub: "Áudio sem compressão"   },
+            { id: "v4"  as const, label: ".v4 Portável", sub: "Editável em qualquer PC" },
           ] as const;
           const isVideo  = exportFormat === "mp4" || exportFormat === "mov" || exportFormat === "gif";
           const isAudio  = exportFormat === "mp3" || exportFormat === "wav";
+          const isSrt    = exportFormat === "srt";
           const isPortable = exportFormat === "v4";
 
           const getClips = () => {
-            // Vídeos/imagens na track 0 → export normal (video + audio).
-            // Vídeos nas tracks extras → audioOnly: true (áudio mixado sobre o vídeo principal).
-            // Clipes de áudio puro → sempre incluídos em todas as tracks.
             const sorted = [...visualCopies].sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0));
             return sorted
               .filter((c) => !!assets.find((a) => a.id === c.assetId))
               .map((c) => {
                 const asset = assets.find((a) => a.id === c.assetId)!;
-                const isExtraVideoTrack = (asset.kind === "video" || asset.kind === "image") && (c.trackIndex ?? 0) > 0;
+                const onExtraTrack = (c.trackIndex ?? 0) > 0;
+                // track 1+: vídeo/imagem → overlay visual; áudio → mix de fundo
+                const isOverlay = onExtraTrack && (asset.kind === "video" || asset.kind === "image");
+                const audioOnly = onExtraTrack && asset.kind === "audio";
                 return {
                   filePath: asset.filePath || "",
                   trimStart: c.trimStart ?? 0,
                   duration: c.duration ?? 5,
                   speed: c.speed ?? 1,
-                  audioOnly: isExtraVideoTrack,
+                  startTime: c.startTime ?? 0,
+                  isOverlay,
+                  audioOnly,
                 };
               });
           };
@@ -1979,7 +2104,30 @@ export function App() {
             setExportProgress(0);
             try {
               const clips = getClips();
-              if (isPortable) {
+              if (isSrt) {
+                if (!captionSegments.length) {
+                  setExportError("Nenhuma legenda gerada. Use o painel de legendas primeiro.");
+                  return;
+                }
+                const fmtSrt = (s: number) => {
+                  const h = Math.floor(s / 3600);
+                  const m = Math.floor((s % 3600) / 60);
+                  const sec = Math.floor(s % 60);
+                  const ms = Math.round((s % 1) * 1000);
+                  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")},${String(ms).padStart(3,"0")}`;
+                };
+                const srt = captionSegments.map((seg, i) =>
+                  `${i + 1}\n${fmtSrt(seg.start)} --> ${fmtSrt(seg.end)}\n${seg.text}\n`
+                ).join("\n");
+                const blob = new Blob([srt], { type: "text/plain;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `${projectName || "legendas"}.srt`;
+                a.click();
+                URL.revokeObjectURL(url);
+                setExportProgress(100);
+              } else if (isPortable) {
                 const snapshot = getProjectSnapshot();
                 const res = await window.studioV4?.savePortableV4?.({ snapshot, defaultName: projectName });
                 if (!res) setExportProgress(null);
@@ -2092,11 +2240,11 @@ export function App() {
                     <div className="text-[10px] text-muted-foreground space-y-0.5">
                       <p>{visualCopies.length} clipe{visualCopies.length !== 1 ? "s" : ""} na timeline</p>
                       {isPortable && <p className="text-amber-400/80">Inclui todos os arquivos de mídia — abre em qualquer PC com Studio V4 instalado.</p>}
-                      {exportFormat === "mp4" && <p>MP4 H.264 · AAC 192k</p>}
+                      {exportFormat === "mp4" && <p>MP4 H.264 · AAC 192k · para publicar direto nas redes</p>}
                       {exportFormat === "mov" && <p>MOV H.264 · AAC 192k · compatível com Premiere e DaVinci</p>}
                       {exportFormat === "gif" && <p>GIF com paleta de 256 cores · 15fps · sem áudio</p>}
                       {exportFormat === "mp3" && <p>MP3 192k · áudio de todos os clipes concatenados</p>}
-                      {exportFormat === "wav" && <p>WAV PCM 16-bit · sem compressão · qualidade máxima</p>}
+                      {exportFormat === "srt" && <p className={captionSegments.length === 0 ? "text-amber-400/80" : ""}>{captionSegments.length === 0 ? "Nenhuma legenda gerada ainda — gere legendas primeiro." : `${captionSegments.length} legenda${captionSegments.length !== 1 ? "s" : ""} prontas para exportar.`}</p>}
                     </div>
 
                     <div className="flex gap-2 pt-1">
@@ -2215,8 +2363,8 @@ export function App() {
           type Cmd = { id: string; label: string; desc: string; icon: React.ElementType; action: () => void; keywords: string };
           const COMMANDS: Cmd[] = [
             { id: "import",    label: "Importar arquivo",            desc: "Adicionar vídeo, áudio ou imagem ao projeto",    icon: Upload,   action: () => handleImport(),                         keywords: "importar video audio imagem arquivo abrir" },
-            { id: "open",      label: "Abrir projeto (.v4)",         desc: "Carregar um projeto salvo anteriormente",        icon: FolderOpen, action: () => handleMenuCommand("open-project"),    keywords: "abrir projeto carregar v4" },
-            { id: "save",      label: "Salvar projeto",              desc: "Salvar como arquivo .v4 portável",               icon: Download, action: () => handleMenuCommand("save-project"),        keywords: "salvar projeto exportar v4" },
+            { id: "open",      label: "Abrir projeto (.v4)",         desc: "Carregar um projeto salvo anteriormente",        icon: FolderOpen, action: () => handleMenuCommand("open-file"),    keywords: "abrir projeto carregar v4" },
+            { id: "save",      label: "Salvar projeto",              desc: "Salvar como arquivo .v4 portável",               icon: Download, action: () => handleMenuCommand("save-file"),        keywords: "salvar projeto exportar v4" },
             { id: "clean-cut", label: "Corte Limpo — remover silêncios", desc: "Detecta pausas e gaguejos automaticamente", icon: Zap,      action: () => { setActiveTool("ai"); setCmdOpen(false); }, keywords: "corte limpo silencio pausa remover cortar ai" },
             { id: "captions",  label: "Gerar legendas automáticas",  desc: "Transcreve a fala em texto (Whisper AI)",        icon: Captions, action: () => { setActiveTool("captions"); setCmdOpen(false); }, keywords: "legenda transcricao texto ia whisper subtitle" },
             { id: "stems",     label: "Separar voz e música",        desc: "Isola vocais e instrumental em faixas separadas",icon: Mic,      action: () => { setActiveTool("audio"); setCmdOpen(false); }, keywords: "voz musica instrumental separar stems audio" },

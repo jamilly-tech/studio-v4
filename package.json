@@ -1,6 +1,6 @@
 {
   "name": "studio-v4",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Studio V4 — Editor de vídeo desktop com IA, timeline e integração Google Drive",
   "private": true,
   "main": "electron/main.cjs",
@@ -21,6 +21,9 @@
     "adm-zip": "^0.5.17",
     "archiver": "^6.0.2",
     "electron-updater": "^6.3.9",
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0",
+    "onnxruntime-node": "^1.19.2",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -31,8 +34,6 @@
     "autoprefixer": "^10.4.20",
     "electron": "^42.4.0",
     "electron-builder": "^26.15.3",
-    "ffmpeg-static": "^5.3.0",
-    "ffprobe-static": "^3.1.0",
     "lucide-react": "^0.468.0",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
@@ -46,12 +47,16 @@
     "productName": "Studio V4",
     "copyright": "V4 Aguiar & V4 Jasson Oliveira e Co",
     "asar": true,
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**"
+    ],
     "directories": {
       "output": "release"
     },
     "files": [
       "electron/main.cjs",
       "electron/preload.cjs",
+      "electron/stems-engine.cjs",
       "dist/**/*",
       "assets/**/*"
     ],
@@ -63,10 +68,6 @@
       {
         "from": "node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe",
         "to": "ffprobe.exe"
-      },
-      {
-        "from": ".env",
-        "to": ".env"
       }
     ],
     "win": {

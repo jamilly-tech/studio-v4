@@ -222,6 +222,11 @@ export function DrivePanel({
         </div>
       )}
 
+      {/* ── Alternativa sem configuração ─────────────────────────────────── */}
+      {credentialsOk === false && (
+        <LocalBackupCard getProjectSnapshot={getProjectSnapshot} projectName={projectName} />
+      )}
+
       {!connected ? (
         <button
           type="button"
@@ -308,6 +313,77 @@ export function DrivePanel({
           <p className="text-[10px] text-destructive">{error}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Backup local — alternativa sem credenciais ─────────────────────────────
+function LocalBackupCard({
+  getProjectSnapshot,
+  projectName,
+}: {
+  getProjectSnapshot: () => unknown;
+  projectName: string;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const snapshot = getProjectSnapshot();
+      const path = await window.studioV4?.saveProjectFile?.({ snapshot, defaultName: projectName });
+      if (path) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleOpen() {
+    setLoading(true);
+    try {
+      await window.studioV4?.openProjectFile?.();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+      <div className="px-3 py-2 bg-muted/30 border-b border-border flex items-center gap-2">
+        <Save className="size-3 text-muted-foreground" />
+        <p className="text-[10px] font-bold">Alternativa — Backup Local</p>
+      </div>
+      <div className="flex flex-col gap-2.5 p-3">
+        <p className="text-[9px] text-muted-foreground leading-relaxed">
+          Sem precisar configurar o Google Drive, salve o projeto como arquivo <strong className="text-foreground">.v4</strong> em qualquer pasta — incluindo pastas do <strong className="text-foreground">OneDrive</strong>, <strong className="text-foreground">Google Drive Desktop</strong> ou <strong className="text-foreground">Dropbox</strong> já instalados no PC. A sincronização acontece automaticamente pelo app de nuvem.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary/90 px-3 py-2 text-[10px] font-bold text-white hover:bg-primary transition disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="size-3 animate-spin" /> : saved ? <Check className="size-3" /> : <Save className="size-3" />}
+            {saving ? "Salvando..." : saved ? "Salvo!" : "Salvar .v4"}
+          </button>
+          <button
+            type="button"
+            onClick={handleOpen}
+            disabled={loading}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[10px] font-semibold hover:bg-muted/30 transition disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="size-3 animate-spin" /> : <FolderOpen className="size-3" />}
+            {loading ? "Abrindo..." : "Abrir .v4"}
+          </button>
+        </div>
+        <p className="text-[8px] text-muted-foreground/50 leading-relaxed">
+          Atalho: <kbd className="font-mono bg-muted/40 px-1 rounded">Ctrl+S</kbd> salva diretamente.
+        </p>
+      </div>
     </div>
   );
 }

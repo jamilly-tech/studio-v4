@@ -139,7 +139,7 @@ export function TopBar({
         <button
           type="button"
           onClick={() => onThemeChange(theme === "dark" ? "light" : "dark")}
-          className="grid size-8 place-items-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          className="grid size-8 place-items-center rounded-md text-foreground/60 transition hover:bg-muted hover:text-foreground"
           title={theme === "dark" ? "Modo claro" : "Modo escuro"}
         >
           {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}

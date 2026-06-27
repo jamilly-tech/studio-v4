@@ -30,6 +30,7 @@ export type ToolId =
   | "templates"
   | "ai"
   | "restore"
+  | "voice"
   | "settings";
 
 export type FormatPreset = {

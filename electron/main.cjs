@@ -23,12 +23,215 @@ const { app, BrowserWindow, shell, ipcMain, screen, dialog } = require("electron
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
+const https = require("node:https");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn, execFile } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const archiver = require("archiver");
 const AdmZip = require("adm-zip");
+
+// ── Separação vocal built-in (ONNX — sem Python) ─────────────────────────────
+const stemsEngine = require("./stems-engine.cjs");
+
+const STEMS_MODEL_NAME = "Kim_Vocal_2.onnx";
+const STEMS_MODEL_URL  = "https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/Kim_Vocal_2.onnx";
+
+function stemsModelDir()  { return path.join(app.getPath("userData"), "models"); }
+function stemsModelPath() { return path.join(stemsModelDir(), STEMS_MODEL_NAME); }
+
+function downloadWithRedirects(url, destPath, onProgress, redirectCount) {
+  return new Promise((resolve, reject) => {
+    if ((redirectCount||0) > 8) return reject(new Error("Muitos redirects"));
+    const isHttps = url.startsWith("https");
+    const mod = isHttps ? https : http;
+    mod.get(url, { headers: { "User-Agent": "StudioV4/1.0" } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return downloadWithRedirects(res.headers.location, destPath, onProgress, (redirectCount||0)+1)
+          .then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
+      const total = parseInt(res.headers["content-length"]||"0", 10);
+      let done = 0;
+      const file = fs.createWriteStream(destPath);
+      res.on("data", chunk => {
+        file.write(chunk);
+        done += chunk.length;
+        if (total > 0) onProgress?.(Math.round(done/total*100), done, total);
+      });
+      res.on("end", () => { file.end(() => resolve()); });
+      res.on("error", err => { file.destroy(); reject(err); });
+    }).on("error", reject);
+  });
+}
+
+async function ensureModelDownloaded() {
+  const mp = stemsModelPath();
+  if (fs.existsSync(mp) && fs.statSync(mp).size > 10_000_000) return; // já existe
+  fs.mkdirSync(stemsModelDir(), { recursive: true });
+  const tmp = mp + ".download";
+  try {
+    await downloadWithRedirects(STEMS_MODEL_URL, tmp, (pct, done, total) => {
+      sendProgress("model:download-progress", { percent: pct, done, total, name: STEMS_MODEL_NAME });
+    });
+    fs.renameSync(tmp, mp);
+    sendProgress("model:download-progress", { percent: 100, done: 0, total: 0, ready: true });
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch {}
+    sendProgress("model:download-progress", { error: String(err?.message||err) });
+  }
+}
+
+// ── Whisper.cpp nativo (sem Python) ──────────────────────────────────────────
+
+const WHISPER_ZIP_URL   = "https://github.com/ggerganov/whisper.cpp/releases/download/v1.7.4/whisper-blas-bin-x64.zip";
+const WHISPER_MODEL_URLS = {
+  tiny:  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+  small: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+};
+
+function whisperDir()          { return path.join(app.getPath("userData"), "whisper"); }
+function whisperExePath()      { return path.join(whisperDir(), "whisper-cli.exe"); }
+function whisperModelPath(m)   { return path.join(whisperDir(), `ggml-${m}.bin`); }
+function whisperModelReady(m)  {
+  const p = whisperModelPath(m);
+  const minSize = m === "tiny" ? 50_000_000 : 100_000_000;
+  return fs.existsSync(p) && fs.statSync(p).size > minSize;
+}
+
+async function ensureWhisperReady() {
+  const dir = whisperDir();
+  fs.mkdirSync(dir, { recursive: true });
+
+  // Baixa e extrai binário Whisper.cpp se necessário
+  if (!fs.existsSync(whisperExePath())) {
+    const zipTmp = path.join(dir, "_whisper.zip");
+    try {
+      await downloadWithRedirects(WHISPER_ZIP_URL, zipTmp, (pct) => {
+        sendProgress("whisper:status", { stage: "exe", percent: pct });
+      });
+      const ZipCtor = require("adm-zip");
+      const zip = new ZipCtor(zipTmp);
+      zip.extractAllTo(dir, true);
+      // Normaliza nome do executável (muda entre versões)
+      for (const name of ["whisper-cli.exe", "main.exe"]) {
+        const p = path.join(dir, name);
+        if (fs.existsSync(p) && p !== whisperExePath()) { fs.renameSync(p, whisperExePath()); break; }
+        if (fs.existsSync(p)) break;
+      }
+      try { fs.unlinkSync(zipTmp); } catch {}
+      sendProgress("whisper:status", { stage: "exe", percent: 100, ready: true });
+    } catch (err) {
+      try { fs.unlinkSync(zipTmp); } catch {}
+      sendProgress("whisper:status", { stage: "exe", error: String(err?.message||err) });
+    }
+  }
+
+  // Baixa modelo tiny (~75 MB)
+  if (!whisperModelReady("tiny")) {
+    const tmp = whisperModelPath("tiny") + ".dl";
+    try {
+      await downloadWithRedirects(WHISPER_MODEL_URLS.tiny, tmp, (pct, done, total) => {
+        sendProgress("whisper:status", { stage: "model-tiny", percent: pct, done, total });
+      });
+      fs.renameSync(tmp, whisperModelPath("tiny"));
+      sendProgress("whisper:status", { stage: "model-tiny", percent: 100, ready: true });
+    } catch (err) {
+      try { fs.unlinkSync(tmp); } catch {}
+      sendProgress("whisper:status", { stage: "model-tiny", error: String(err?.message||err) });
+    }
+  }
+}
+
+ipcMain.handle("media:whisper-status", () => ({
+  exeReady:   fs.existsSync(whisperExePath()),
+  tinyReady:  whisperModelReady("tiny"),
+  smallReady: whisperModelReady("small"),
+}));
+
+ipcMain.handle("media:transcribe-builtin", async (_event, filePath, language, trimStart, trimDuration, modelSize) => {
+  const model     = (modelSize === "small" && whisperModelReady("small")) ? "small" : "tiny";
+  const modelPath = whisperModelPath(model);
+  const exePath   = whisperExePath();
+
+  if (!fs.existsSync(exePath))   return { segments: [], error: "Whisper.cpp não instalado" };
+  if (!whisperModelReady(model)) return { segments: [], error: `Modelo "${model}" não encontrado` };
+
+  const ts = typeof trimStart    === "number" && trimStart    > 0 ? trimStart    : 0;
+  const td = typeof trimDuration === "number" && trimDuration > 0 ? trimDuration : null;
+  const baseName = safeBaseName(filePath);
+  const wavPath  = path.join(projectTmpDir, `wspp_${Date.now()}_${baseName}.wav`);
+  const outPfx   = path.join(projectTmpDir, `wspp_out_${Date.now()}`);
+
+  const ffArgs = ["-y"];
+  if (ts > 0) ffArgs.push("-ss", String(ts));
+  if (td !== null) ffArgs.push("-t", String(td));
+  ffArgs.push("-i", filePath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", wavPath);
+
+  const { code: wc } = await runProcess(ffmpegPath, ffArgs);
+  if (wc !== 0 || !fs.existsSync(wavPath)) return { segments: [], error: "Falha ao extrair áudio" };
+
+  // Duração real do trecho (para ETA preciso)
+  let audioDuration = td || 30;
+  try {
+    const pr = await runProcess(ffprobePath, ["-v","quiet","-show_entries","format=duration","-of","csv=p=0",wavPath]);
+    const d = parseFloat(pr.stdout); if (d > 0) audioDuration = d;
+  } catch {}
+
+  sendProgress("media:progress", { filePath, stage: "transcribe", percent: 2, audioDuration });
+
+  const lang = language === "auto" ? null : (language || "pt");
+  const args = [
+    "-m", modelPath, "-f", wavPath,
+    ...(lang ? ["-l", lang] : []),
+    "-oj", "-of", outPfx,
+    "--print-progress",
+  ];
+
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const proc = spawn(exePath, args, { stdio: ["ignore","pipe","pipe"], windowsHide: true });
+    let errBuf = "";
+
+    proc.stderr.on("data", chunk => {
+      errBuf += chunk.toString();
+      const matches = [...errBuf.matchAll(/progress\s*=\s*(\d+)%/g)];
+      if (matches.length) {
+        const pct = parseInt(matches[matches.length-1][1]);
+        const elapsed = (Date.now() - t0) / 1000;
+        const eta = pct > 3 ? Math.max(0, Math.round((elapsed / pct) * (100 - pct))) : null;
+        sendProgress("media:progress", { filePath, stage: "transcribe", percent: pct, eta, audioDuration });
+      }
+    });
+    proc.stdout.on("data", () => {});
+
+    proc.on("close", code => {
+      try { fs.unlinkSync(wavPath); } catch {}
+      const jsonFile = outPfx + ".json";
+      if (code === 0 && fs.existsSync(jsonFile)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(jsonFile, "utf-8"));
+          const segments = (raw.transcription || [])
+            .map(s => ({
+              start: (s.offsets?.from ?? 0) / 1000,
+              end:   (s.offsets?.to   ?? 0) / 1000,
+              text:  (s.text || "").trim(),
+            }))
+            .filter(s => s.text);
+          try { fs.unlinkSync(jsonFile); } catch {}
+          sendProgress("media:progress", { filePath, stage: "transcribe", percent: 100, audioDuration });
+          resolve({ segments, language: lang || "pt" });
+        } catch (e) {
+          resolve({ segments: [], error: `JSON inválido: ${String(e?.message||e)}` });
+        }
+      } else {
+        resolve({ segments: [], error: `Whisper falhou (${code}):\n${errBuf.slice(-300)}` });
+      }
+    });
+    proc.on("error", err => resolve({ segments: [], error: String(err?.message||err) }));
+  });
+});
 
 // ── Auto-Updater ────────────────────────────────────────────────────────────
 let autoUpdater;
@@ -316,6 +519,72 @@ ipcMain.handle("media:detect-silence", async (_event, filePath, opts = {}) => {
   });
 });
 
+// ── 3c. Detect Repeats: compara takes pelo fingerprint de áudio ──────────────
+ipcMain.handle("media:detect-repeats", async (_event, filePath) => {
+  if (!fs.existsSync(filePath)) return { error: "Arquivo nao encontrado", groups: [] };
+
+  // 1. Duração total via ffprobe
+  const probe = await runProcess(ffprobePath, [
+    "-v", "quiet", "-print_format", "json", "-show_format", filePath,
+  ]);
+  let totalDuration = 0;
+  try { totalDuration = parseFloat(JSON.parse(probe.stdout).format.duration || "0"); } catch {}
+  if (totalDuration < 4) return { groups: [], totalDuration, takesFound: 0 };
+
+  // 2. Detectar silêncios para segmentar takes
+  const silR = await runProcess(ffmpegPath, [
+    "-i", filePath, "-af", "silencedetect=noise=-33dB:d=0.4", "-f", "null", "-",
+  ]);
+  const starts = [...silR.stderr.matchAll(/silence_start: ([\d.]+)/g)].map(m => parseFloat(m[1]));
+  const ends   = [...silR.stderr.matchAll(/silence_end: ([\d.]+)/g)].map(m => parseFloat(m[1]));
+
+  // 3. Montar segmentos de fala (takes)
+  const takes = [];
+  let cursor = 0;
+  for (let i = 0; i < starts.length; i++) {
+    if (starts[i] - cursor > 1.0) takes.push({ start: cursor, end: starts[i], duration: starts[i] - cursor });
+    cursor = ends[i] ?? totalDuration;
+  }
+  if (totalDuration - cursor > 1.0) takes.push({ start: cursor, end: totalDuration, duration: totalDuration - cursor });
+  if (takes.length < 2) return { groups: [], totalDuration, takesFound: takes.length };
+
+  // 4. Fingerprint de cada take: volumedetect → mean_volume + max_volume
+  const fingerprints = await Promise.all(takes.map(async (take, idx) => {
+    const r = await runProcess(ffmpegPath, [
+      "-ss", take.start.toFixed(3), "-t", Math.min(take.duration, 30).toFixed(3),
+      "-i", filePath, "-vn", "-af", "volumedetect", "-f", "null", "-",
+    ]);
+    const meanM = r.stderr.match(/mean_volume:\s*([-\d.]+)\s*dBFS/);
+    const maxM  = r.stderr.match(/max_volume:\s*([-\d.]+)\s*dBFS/);
+    return {
+      idx, start: take.start, end: take.end, duration: take.duration,
+      meanVol: meanM ? parseFloat(meanM[1]) : -99,
+      maxVol:  maxM  ? parseFloat(maxM[1])  : -99,
+    };
+  }));
+
+  // 5. Agrupar takes similares (duração ±35% E volume ±6dB)
+  const groups = [];
+  const used = new Set();
+  for (let i = 0; i < fingerprints.length; i++) {
+    if (used.has(i)) continue;
+    const group = [fingerprints[i]];
+    for (let j = i + 1; j < fingerprints.length; j++) {
+      if (used.has(j)) continue;
+      const a = fingerprints[i], b = fingerprints[j];
+      const durRatio = Math.min(a.duration, b.duration) / Math.max(a.duration, b.duration);
+      const volDiff  = Math.abs(a.meanVol - b.meanVol);
+      if (durRatio > 0.60 && volDiff < 7 && a.meanVol > -60 && b.meanVol > -60) {
+        group.push(b);
+        used.add(j);
+      }
+    }
+    if (group.length > 1) { used.add(i); groups.push(group); }
+  }
+
+  return { groups, totalDuration, takesFound: takes.length };
+});
+
 // ── 4. Proxy: cria versão leve para preview ─────────────────────────────────
 
 ipcMain.handle("media:create-proxy", async (_event, filePath, opts = {}) => {
@@ -487,6 +756,87 @@ ipcMain.handle("media:separate-stems", async (_event, filePath) => {
 
   sendProgress("media:progress", { filePath, stage: "stems-done", percent: 100 });
   return Object.keys(result).length > 0 ? result : { error: "Arquivos de stems nao encontrados" };
+});
+
+// ── 6b-extra3. Separate Stems Fast — karaoke FFmpeg (sem Python, instantâneo) ─
+ipcMain.handle("media:separate-stems-fast", async (_event, filePath) => {
+  const baseName = safeBaseName(filePath);
+  const outputDir = path.join(projectTmpDir, `stems_fast_${Date.now()}_${baseName}`);
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const vocalsPath = path.join(outputDir, "vocals_fast.wav");
+  const instrPath  = path.join(outputDir, "instrumentals_fast.wav");
+
+  // Vocais: soma L+R → canal central (onde a voz costuma estar)
+  const vR = await runProcess(ffmpegPath, [
+    "-y", "-i", filePath, "-vn",
+    "-af", "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1",
+    "-ar", "44100", "-acodec", "pcm_s16le", vocalsPath,
+  ]);
+  // Instrumental: L-R → remove canal central (karaoke clássico)
+  const iR = await runProcess(ffmpegPath, [
+    "-y", "-i", filePath, "-vn",
+    "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
+    "-ar", "44100", "-acodec", "pcm_s16le", instrPath,
+  ]);
+
+  const result = {};
+  const port = server?.address()?.port ?? preferredPort;
+  if (vR.code === 0 && fs.existsSync(vocalsPath)) {
+    proxyPaths.add(vocalsPath);
+    result.vocalsPath = vocalsPath;
+    result.vocalsUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(vocalsPath)}`;
+  }
+  if (iR.code === 0 && fs.existsSync(instrPath)) {
+    proxyPaths.add(instrPath);
+    result.instrumentalsPath = instrPath;
+    result.instrumentalsUrl = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(instrPath)}`;
+  }
+  return Object.keys(result).length > 0 ? result : { error: "Falha na separação rápida" };
+});
+
+// ── 6b-extra4. Built-in ONNX stems — sem Python ────────────────────────────
+
+ipcMain.handle("media:stems-model-status", () => {
+  const mp = stemsModelPath();
+  const ready = fs.existsSync(mp) && fs.statSync(mp).size > 10_000_000;
+  return { ready, path: ready ? mp : null };
+});
+
+ipcMain.handle("media:download-stems-model", async () => {
+  await ensureModelDownloaded();
+  return { ready: fs.existsSync(stemsModelPath()) };
+});
+
+ipcMain.handle("media:separate-stems-builtin", async (_event, filePath) => {
+  const mp = stemsModelPath();
+  if (!fs.existsSync(mp)) return { error: "Modelo não encontrado. Verifique a conexão e tente novamente." };
+
+  const baseName = safeBaseName(filePath);
+  const outputDir = path.join(projectTmpDir, `stems_onnx_${Date.now()}_${baseName}`);
+
+  try {
+    const result = await stemsEngine.separateStems(mp, ffmpegPath, filePath, outputDir, pct => {
+      sendProgress("media:progress", { filePath, stage: "stems", percent: pct });
+    });
+
+    const port = server?.address()?.port ?? preferredPort;
+    const r = {};
+    if (result.vocalsPath && fs.existsSync(result.vocalsPath)) {
+      proxyPaths.add(result.vocalsPath);
+      r.vocalsPath = result.vocalsPath;
+      r.vocalsUrl  = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(result.vocalsPath)}`;
+    }
+    if (result.instrumentalsPath && fs.existsSync(result.instrumentalsPath)) {
+      proxyPaths.add(result.instrumentalsPath);
+      r.instrumentalsPath = result.instrumentalsPath;
+      r.instrumentalsUrl  = `http://127.0.0.1:${port}/proxy?f=${encodeURIComponent(result.instrumentalsPath)}`;
+    }
+    sendProgress("media:progress", { filePath, stage: "stems-done", percent: 100 });
+    return Object.keys(r).length > 0 ? r : { error: "Arquivos de stems não gerados" };
+  } catch (err) {
+    return { error: String(err?.message || err) };
+  }
 });
 
 // ── 6b-extra2. Save Audio — copia arquivo de áudio para local escolhido ─────
@@ -1140,7 +1490,22 @@ ipcMain.handle("write-config", (_event, data) => {
 });
 
 // Registra caminho no proxy sem re-ingerir (para restaurar projetos salvos)
+// Apenas paths dentro de diretórios conhecidos são permitidos — evita path traversal
+const PROXY_ALLOWED_ROOTS = [
+  projectTmpDir,
+  app.getPath("userData"),
+  app.getPath("downloads"),
+  app.getPath("documents"),
+  os.homedir(),
+];
+function isPathAllowed(p) {
+  if (typeof p !== "string") return false;
+  const norm = path.normalize(p);
+  return PROXY_ALLOWED_ROOTS.some(root => norm.startsWith(path.normalize(root) + path.sep) || norm === path.normalize(root));
+}
+
 ipcMain.handle("media:register-proxy", (_event, filePath) => {
+  if (!isPathAllowed(filePath)) return { error: "Path não autorizado" };
   if (filePath && fs.existsSync(filePath)) {
     proxyPaths.add(filePath);
     const port = server?.address()?.port ?? preferredPort;
@@ -1180,10 +1545,19 @@ ipcMain.handle("save-project-file", async (_event, { snapshot, defaultName }) =>
   });
   if (result.canceled || !result.filePath) return null;
   const savePath = result.filePath.endsWith(".v4") ? result.filePath : result.filePath + ".v4";
-  // Remove URLs localhost — serão regeneradas via registerProxy ao reabrir
+  // Remove URLs efêmeras (localhost proxy) — serão regeneradas via registerProxy ao reabrir
   const cleanSnapshot = {
     ...snapshot,
-    assets: (snapshot.assets || []).map(a => ({ ...a, url: "", previewUrl: "", file: undefined })),
+    assets: (snapshot.assets || []).map(a => ({
+      ...a,
+      url: "",
+      previewUrl: "",
+      file: undefined,
+      // thumbnailUrl gerada como proxy localhost também não sobrevive entre sessões
+      thumbnailUrl: (typeof a.thumbnailUrl === "string" && a.thumbnailUrl.startsWith("http://127.0.0.1"))
+        ? undefined
+        : a.thumbnailUrl,
+    })),
   };
   try {
     fs.writeFileSync(savePath, JSON.stringify(cleanSnapshot, null, 2), "utf-8");
@@ -1222,6 +1596,31 @@ ipcMain.handle("open-project-file", async () => {
     return snapshot;
   }
   return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+});
+
+// Abre projeto .v4 diretamente por path (sem dialog) — usado pelos recentes
+ipcMain.handle("load-project-file", async (_event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const header = Buffer.alloc(4);
+    const fd = fs.openSync(filePath, "r");
+    fs.readSync(fd, header, 0, 4, 0);
+    fs.closeSync(fd);
+    if (header[0] === 0x50 && header[1] === 0x4B) {
+      const zip = new AdmZip(filePath);
+      const tmpDir = path.join(os.tmpdir(), "studiov4", Date.now().toString());
+      fs.mkdirSync(tmpDir, { recursive: true });
+      zip.extractAllTo(tmpDir, true);
+      const snapshot = JSON.parse(zip.readAsText("project.json"));
+      snapshot.assets = (snapshot.assets || []).map(a => {
+        if (a.filePath && !path.isAbsolute(a.filePath))
+          return { ...a, filePath: path.join(tmpDir, a.filePath) };
+        return a;
+      });
+      return snapshot;
+    }
+    return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch { return null; }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1270,6 +1669,9 @@ ipcMain.handle("save-v4-portable", async (_event, { snapshot, defaultName }) => 
       url: "",
       previewUrl: "",
       file: undefined,
+      thumbnailUrl: (typeof a.thumbnailUrl === "string" && a.thumbnailUrl.startsWith("http://127.0.0.1"))
+        ? undefined
+        : a.thumbnailUrl,
     })),
   };
 
@@ -1454,9 +1856,10 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
   const allValid = (clips || []).filter(c => c.filePath && fs.existsSync(c.filePath));
   if (allValid.length === 0) throw new Error("Nenhum clipe valido");
 
-  // Separa clipes principais (track 0) dos clipes extra-track (audioOnly = áudio de bg/voiceover)
-  const mainClips = allValid.filter(c => !c.audioOnly);
-  const extraClips = allValid.filter(c => c.audioOnly);
+  // track 0 → main (concat); track 1+ vídeo → overlay; track 1+ áudio → mix de fundo
+  const mainClips      = allValid.filter(c => !c.isOverlay && !c.audioOnly);
+  const extraAudioClips = allValid.filter(c => c.audioOnly);
+  const overlayClips   = allValid.filter(c => c.isOverlay);
 
   if (mainClips.length === 0) throw new Error("Nenhum clipe de vídeo na track principal");
 
@@ -1481,9 +1884,12 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
   const n = mainClips.length;
   const totalDuration = mainClips.reduce((sum, c) => sum + (c.duration || 5), 0);
 
-  // ── Tracks extras: áudio extra de vídeos em track > 0 ──────────────────────
+  // concat da track principal → [concatv][concata]
+  filterParts.push(`${concatParts.join("")}concat=n=${n}:v=1:a=1[concatv][concata]`);
+
+  // ── Áudio extra (tracks de áudio > 0) ──────────────────────────────────────
   const extraAudioLabels = [];
-  extraClips.forEach((clip, j) => {
+  extraAudioClips.forEach((clip, j) => {
     const idx = n + j;
     const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
     inputs.push("-ss", String(clip.trimStart || 0), "-t", String((clip.duration || 5) / speed), "-i", clip.filePath);
@@ -1493,27 +1899,47 @@ ipcMain.handle("export-video", async (_event, { clips, outputPath, resolution, c
     extraAudioLabels.push(label);
   });
 
-  // ── Monta filter_complex ────────────────────────────────────────────────────
-  let filterComplex;
-  let assTmpPath = null;
-
-  // concat da track principal → [concatv][concata]
-  filterParts.push(`${concatParts.join("")}concat=n=${n}:v=1:a=1[concatv][concata]`);
-
-  // se há áudio extra: amix com concata → [outa]; senão [concata] vira [outa] diretamente
   const amixInputCount = 1 + extraAudioLabels.length;
   const audioOutFilter = extraAudioLabels.length > 0
     ? `[concata]${extraAudioLabels.join("")}amix=inputs=${amixInputCount}:normalize=0[outa]`
     : `[concata]anull[outa]`;
   filterParts.push(audioOutFilter);
 
+  // ── Overlay de vídeo (tracks de vídeo > 0) ─────────────────────────────────
+  const overBase = n + extraAudioClips.length;
+  let prevVideoOut = "concatv";
+
+  overlayClips.forEach((clip, k) => {
+    const idx = overBase + k;
+    const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
+    const startTime = clip.startTime || 0;
+    const duration  = clip.duration || 5;
+    const endTime   = startTime + duration;
+    inputs.push("-ss", String(clip.trimStart || 0), "-t", String(duration / speed), "-i", clip.filePath);
+    const speedPts = speed !== 1 ? `${(1/speed).toFixed(4)}*` : "";
+    filterParts.push(
+      `[${idx}:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setpts=${speedPts}(PTS-STARTPTS)+${startTime.toFixed(3)}/TB[ov${k}]`
+    );
+    const outLabel = k === overlayClips.length - 1 ? "preoutv" : `ovout${k}`;
+    filterParts.push(
+      `[${prevVideoOut}][ov${k}]overlay=enable='between(t,${startTime.toFixed(3)},${endTime.toFixed(3)})':eof_action=pass[${outLabel}]`
+    );
+    prevVideoOut = outLabel;
+  });
+
+  const videoInLabel = overlayClips.length > 0 ? "preoutv" : "concatv";
+
+  // ── Legenda e saída final ──────────────────────────────────────────────────
+  let filterComplex;
+  let assTmpPath = null;
+
   if (captionsASS && captionsASS.trim()) {
     assTmpPath = path.join(projectTmpDir, `captions_export_${Date.now()}.ass`);
     fs.writeFileSync(assTmpPath, captionsASS, "utf-8");
     const escapedAss = assTmpPath.replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1\\:");
-    filterParts.push(`[concatv]ass='${escapedAss}'[outv]`);
+    filterParts.push(`[${videoInLabel}]ass='${escapedAss}'[outv]`);
   } else {
-    filterParts.push(`[concatv]anull[outv]`);
+    filterParts.push(`[${videoInLabel}]null[outv]`);
   }
 
   filterComplex = filterParts.join(";");
@@ -1576,9 +2002,28 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      // sandbox:false necessário para preload com contextBridge funcionar em alguns builds Electron 42
       sandbox: false,
       preload: path.join(__dirname, "preload.cjs"),
     },
+  });
+
+  // ── CSP — restringe origens de scripts/mídia para reduzir superfície XSS ──
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' http://127.0.0.1:* https:; " +
+          "media-src 'self' http://127.0.0.1:* blob: data:; " +
+          "img-src 'self' http://127.0.0.1:* blob: data:; " +
+          "font-src 'self' data:;"
+        ],
+      },
+    });
   });
 
   mainWindow.once("ready-to-show", () => {
@@ -1614,10 +2059,166 @@ async function createWindow() {
   }
 }
 
+// ── Síntese de Voz — Windows SAPI (funciona em qualquer PC Windows, sem instalar nada) ──
+ipcMain.handle("media:list-voices", async () => {
+  const ps = [
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    "Add-Type -AssemblyName System.Speech",
+    "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer",
+    "$s.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name }",
+    "$s.Dispose()",
+  ].join("; ");
+  return new Promise(resolve => {
+    const proc = spawn("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], {
+      stdio: ["ignore","pipe","pipe"], windowsHide: true,
+    });
+    let out = "";
+    proc.stdout.on("data", d => out += d.toString());
+    proc.on("close", () => {
+      const voices = out.trim().split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      resolve({ voices });
+    });
+    proc.on("error", () => resolve({ voices: [] }));
+  });
+});
+
+ipcMain.handle("media:synthesize-voice", async (_event, text, voiceName) => {
+  if (typeof text !== "string") return { error: "text deve ser string" };
+  const outPath    = path.join(projectTmpDir, `tts_${Date.now()}.wav`);
+  const txtPath    = path.join(projectTmpDir, `tts_text_${Date.now()}.txt`);
+  const scriptPath = path.join(projectTmpDir, `tts_script_${Date.now()}.ps1`);
+
+  // Texto vai para arquivo temporário — nunca interpolado no script PS (evita injection)
+  const cleanText = (text || "").slice(0, 500);
+  fs.writeFileSync(txtPath, cleanText, "utf-8");
+
+  // Voice name: apenas caracteres alfanuméricos, espaço e hífen
+  const safeVoice = (voiceName || "").replace(/[^a-zA-Z0-9 \-]/g, "").slice(0, 100);
+
+  const psScript = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Speech
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+if ('${safeVoice}') { try { $s.SelectVoice('${safeVoice}') } catch {} }
+$txt = [System.IO.File]::ReadAllText('${txtPath.replace(/\\/g, "\\\\")}', [System.Text.Encoding]::UTF8)
+$s.SetOutputToWaveFile('${outPath.replace(/\\/g, "\\\\")}')
+$s.Speak($txt)
+$s.Dispose()
+Write-Output 'done'
+`.trim();
+
+  fs.writeFileSync(scriptPath, psScript, "utf-8");
+
+  return new Promise(resolve => {
+    const proc = spawn("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath], {
+      stdio: ["ignore","pipe","pipe"], windowsHide: true,
+    });
+    let errBuf = "";
+    proc.stderr.on("data", d => errBuf += d.toString());
+    proc.on("close", code => {
+      try { fs.unlinkSync(txtPath); } catch {}
+      try { fs.unlinkSync(scriptPath); } catch {}
+      if (code === 0 && fs.existsSync(outPath)) {
+        resolve({ path: outPath, url: `file://${outPath.replace(/\\/g, "/")}` });
+      } else {
+        resolve({ error: (errBuf || "PowerShell SAPI falhou").slice(-300) });
+      }
+    });
+    proc.on("error", e => resolve({ error: String(e?.message || e) }));
+  });
+});
+
+// ── Lip Sync — Wav2Lip via Python (limite: 30s de vídeo por vez) ───────────
+const MAX_LIPSYNC_SEC = 30;
+
+ipcMain.handle("media:lipsync-status", async () => {
+  return new Promise(resolve => {
+    // shell: false — python sem shell; args controlados pelo app, sem input de usuário
+    const proc = spawn("python", ["-c", "import wav2lip_inference; print('ok')"], {
+      stdio: ["ignore","pipe","pipe"], windowsHide: true,
+    });
+    let out = "";
+    proc.stdout.on("data", d => out += d.toString());
+    proc.on("close", code => resolve({ ready: code === 0 && out.includes("ok") }));
+    proc.on("error", () => resolve({ ready: false }));
+  });
+});
+
+ipcMain.handle("media:lipsync", async (_event, videoPath, audioPath, trimStart, trimDuration) => {
+  if (typeof videoPath !== "string") return { error: "videoPath inválido" };
+  if (audioPath !== null && typeof audioPath !== "string") return { error: "audioPath inválido" };
+  const dur = Math.min(typeof trimDuration === "number" ? trimDuration : MAX_LIPSYNC_SEC, MAX_LIPSYNC_SEC);
+  const ts  = typeof trimStart === "number" && trimStart > 0 ? trimStart : 0;
+  const baseName  = safeBaseName(videoPath);
+  const tmpVideo  = path.join(projectTmpDir, `ls_v_${Date.now()}_${baseName}.mp4`);
+  const tmpAudio  = audioPath ? null : path.join(projectTmpDir, `ls_a_${Date.now()}.wav`);
+  const outputPath = path.join(projectTmpDir, `lipsync_${Date.now()}_${baseName}.mp4`);
+
+  // Corta vídeo no máximo 30s
+  const { code: c1 } = await runProcess(ffmpegPath, [
+    "-y", "-ss", String(ts), "-t", String(dur),
+    "-i", videoPath, "-c:v", "libx264", "-preset", "fast", "-c:a", "aac", tmpVideo,
+  ]);
+  if (c1 !== 0) return { error: "Falha ao cortar vídeo" };
+
+  // Extrai áudio do clipe se nenhum áudio externo foi fornecido
+  if (!audioPath && tmpAudio) {
+    const { code: c2 } = await runProcess(ffmpegPath, [
+      "-y", "-ss", String(ts), "-t", String(dur),
+      "-i", videoPath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", tmpAudio,
+    ]);
+    if (c2 !== 0) {
+      try { fs.unlinkSync(tmpVideo); } catch {}
+      return { error: "Falha ao extrair áudio" };
+    }
+  }
+
+  const actualAudio = audioPath || tmpAudio;
+  sendProgress("media:progress", { filePath: videoPath, stage: "lipsync", percent: 5 });
+
+  return new Promise(resolve => {
+    // shell: false — evita interpretação de metacaracteres do shell nos caminhos
+    const proc = spawn("python", [
+      "-m", "wav2lip_inference",
+      "--face", tmpVideo, "--audio", actualAudio, "--out", outputPath,
+    ], { stdio: ["ignore","pipe","pipe"], windowsHide: true });
+
+    let errBuf = "";
+    proc.stderr.on("data", d => {
+      errBuf += d.toString();
+      const m = errBuf.match(/(\d+)%\|/g);
+      if (m) {
+        const pct = Math.min(94, 5 + parseInt(m[m.length-1]) * 0.9);
+        sendProgress("media:progress", { filePath: videoPath, stage: "lipsync", percent: pct });
+      }
+    });
+    proc.stdout.on("data", () => {});
+
+    proc.on("close", code => {
+      try { fs.unlinkSync(tmpVideo); } catch {}
+      if (tmpAudio) { try { fs.unlinkSync(tmpAudio); } catch {} }
+      if (code === 0 && fs.existsSync(outputPath)) {
+        sendProgress("media:progress", { filePath: videoPath, stage: "lipsync-done", percent: 100 });
+        resolve({ outputPath, url: `file://${outputPath.replace(/\\/g, "/")}` });
+      } else {
+        resolve({ error: `Wav2Lip falhou (${code}):\n${errBuf.slice(-400)}` });
+      }
+    });
+    proc.on("error", e => resolve({ error: String(e?.message || e) }));
+  });
+});
+
 app.commandLine.appendSwitch("enable-features", "PlatformHEVCDecoderSupport");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await createWindow();
+  // Downloads de background — stems ONNX + Whisper.cpp (8s de delay para não atrasar o startup)
+  setTimeout(() => {
+    ensureModelDownloaded().catch(() => {});
+    ensureWhisperReady().catch(() => {});
+  }, 8000);
+});
 app.on("window-all-closed", () => { if (server) server.close(); if (process.platform !== "darwin") app.quit(); });
 app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

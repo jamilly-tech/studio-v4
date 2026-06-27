@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Film, Music2, ImageIcon, Trash2, Scissors, Volume2, Plus, X, Copy, Captions } from "lucide-react";
+import { Film, Music2, ImageIcon, Trash2, Scissors, Volume2, Plus, X, Copy, Captions, SplitSquareHorizontal } from "lucide-react";
 import type { ImportedAsset, TimelineVisualCopy, CaptionSegment } from "@/types/editor";
 import { getTimelineClipDuration, timelinePixelsPerSecond } from "@/utils/timeline";
 import { createLocalId } from "@/utils/id";
@@ -20,7 +20,7 @@ interface TimelineProps {
   onSelectAsset: (id: string | null) => void;
   currentTime: number;
   onSeek: (time: number) => void;
-  onDropAsset?: (assetId: string, atTime: number) => void;
+  onDropAsset?: (assetId: string, atTime: number, trackIndex?: number) => void;
   onExtractAudioFromClip?: (assetId: string, startTime: number) => void;
   selectedCopyId?: string | null;
   onSelectCopy?: (id: string | null) => void;
@@ -40,6 +40,16 @@ export function Timeline({
     setSelectedClipIdLocal(id);
     onSelectCopy?.(id);
   };
+  const clipboardRef = useRef<TimelineVisualCopy | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clipId: string; assetKind: string } | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [contextMenu]);
+
   const [dragState, setDragState] = useState<{ id: string; startX: number; origTime: number } | null>(null);
   const [trimState, setTrimState] = useState<{
     id: string; side: "left" | "right"; startX: number;
@@ -149,6 +159,58 @@ export function Timeline({
     const dup: TimelineVisualCopy = { ...clip, id: createLocalId("clip"), trackIndex: newTrack };
     onSetVisualCopies((prev) => [...prev, dup]);
   }, [selectedClipId, visualCopies, onSetVisualCopies]);
+
+  const handleClipContextMenu = useCallback((e: React.MouseEvent, clipId: string, assetKind: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedClipIdLocal(clipId);
+    onSelectCopy?.(clipId);
+    const clip = visualCopies.find((c) => c.id === clipId);
+    if (clip) onSelectAsset(clip.assetId);
+    setContextMenu({ x: e.clientX, y: e.clientY, clipId, assetKind });
+  }, [visualCopies, onSelectAsset, onSelectCopy]);
+
+  const ctxSplitClip = useCallback((clipId: string) => {
+    const clip = visualCopies.find((c) => c.id === clipId);
+    if (!clip) { setContextMenu(null); return; }
+    const clipStart = clip.startTime ?? 0;
+    const clipDur = clip.duration ?? 5;
+    const splitPoint = currentTime - clipStart;
+    if (splitPoint <= 0 || splitPoint >= clipDur) { setContextMenu(null); return; }
+    const left: TimelineVisualCopy = { ...clip, id: createLocalId("clip"), duration: splitPoint, trimEnd: (clip.trimStart ?? 0) + splitPoint };
+    const right: TimelineVisualCopy = { ...clip, id: createLocalId("clip"), startTime: clipStart + splitPoint, duration: clipDur - splitPoint, trimStart: (clip.trimStart ?? 0) + splitPoint };
+    onSetVisualCopies((prev) => prev.map((c) => (c.id === clipId ? left : c)).concat([right]));
+    setSelectedClipIdLocal(null);
+    setContextMenu(null);
+  }, [visualCopies, currentTime, onSetVisualCopies]);
+
+  const ctxDuplicateClip = useCallback((clipId: string) => {
+    const clip = visualCopies.find((c) => c.id === clipId);
+    if (!clip) { setContextMenu(null); return; }
+    const dup: TimelineVisualCopy = { ...clip, id: createLocalId("clip"), startTime: (clip.startTime ?? 0) + (clip.duration ?? 5) + 0.2 };
+    onSetVisualCopies((prev) => [...prev, dup]);
+    setContextMenu(null);
+  }, [visualCopies, onSetVisualCopies]);
+
+  const ctxCopyClip = useCallback((clipId: string) => {
+    const clip = visualCopies.find((c) => c.id === clipId);
+    if (clip) clipboardRef.current = clip;
+    setContextMenu(null);
+  }, [visualCopies]);
+
+  const ctxPasteClip = useCallback(() => {
+    const src = clipboardRef.current;
+    if (!src) return;
+    const dup: TimelineVisualCopy = { ...src, id: createLocalId("clip"), startTime: (src.startTime ?? 0) + (src.duration ?? 5) + 0.2 };
+    onSetVisualCopies((prev) => [...prev, dup]);
+    setContextMenu(null);
+  }, [onSetVisualCopies]);
+
+  const ctxDeleteClip = useCallback((clipId: string) => {
+    onSetVisualCopies((prev) => prev.filter((c) => c.id !== clipId));
+    setSelectedClipIdLocal(null);
+    setContextMenu(null);
+  }, [onSetVisualCopies]);
 
   const handleVolumeChange = useCallback((clipId: string, volume: number) => {
     onSetVisualCopies((prev) =>
@@ -303,7 +365,7 @@ export function Timeline({
                 <input type="range" min={-20} max={12} step={1} value={selectedVolume}
                   onChange={(e) => handleVolumeChange(selectedClipId, Number(e.target.value))}
                   className="h-1 w-14 accent-primary" title={`${selectedVolume}dB`} />
-                <span className="text-[7px] text-muted-foreground w-6 text-right tabular-nums font-mono">{selectedVolume > 0 ? "+" : ""}{selectedVolume}</span>
+                <span className="text-[9px] text-foreground/70 w-6 text-right tabular-nums font-mono">{selectedVolume > 0 ? "+" : ""}{selectedVolume}</span>
               </div>
               <div className="h-4 w-px bg-border" />
               <button type="button" onClick={handleDuplicateClip} className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-card hover:text-foreground" title="Duplicar em nova track (overlay)">
@@ -353,39 +415,39 @@ export function Timeline({
 
       {/* Clip property bar — só quando um clipe está selecionado */}
       {selectedClipId && (
-        <div className="flex h-7 items-center gap-3 border-b border-border bg-card/40 px-2 shrink-0">
-          <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-wider shrink-0">Camada</span>
+        <div className="flex h-8 items-center gap-3 border-b border-border bg-card/60 px-3 shrink-0">
+          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider shrink-0">Clipe</span>
           {/* Speed */}
-          <div className="flex items-center gap-0.5">
-            <span className="text-[8px] text-muted-foreground w-6">Vel</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-7">Vel</span>
             <input
               type="range" min={0.25} max={2} step={0.25} value={selectedSpeed}
               onChange={(e) => handleSpeedChange(selectedClipId, Number(e.target.value))}
-              className="h-1 w-12 accent-primary" title={`${selectedSpeed}x`}
+              className="h-1 w-14 accent-primary" title={`${selectedSpeed}x`}
             />
-            <span className="text-[7px] text-muted-foreground w-5 tabular-nums font-mono">{selectedSpeed}x</span>
+            <span className="text-[9px] text-foreground/70 w-6 tabular-nums font-mono">{selectedSpeed}x</span>
           </div>
-          <div className="h-3.5 w-px bg-border" />
+          <div className="h-4 w-px bg-border" />
           {/* Opacity */}
-          <div className="flex items-center gap-0.5">
-            <span className="text-[8px] text-muted-foreground w-6">Opa</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-7">Opa</span>
             <input
               type="range" min={0} max={100} step={5} value={selectedOpacity}
               onChange={(e) => handleOpacityChange(selectedClipId, Number(e.target.value))}
-              className="h-1 w-12 accent-primary" title={`${selectedOpacity}%`}
+              className="h-1 w-14 accent-primary" title={`${selectedOpacity}%`}
             />
-            <span className="text-[7px] text-muted-foreground w-5 tabular-nums font-mono">{selectedOpacity}%</span>
+            <span className="text-[9px] text-foreground/70 w-6 tabular-nums font-mono">{selectedOpacity}%</span>
           </div>
-          <div className="h-3.5 w-px bg-border" />
+          <div className="h-4 w-px bg-border" />
           {/* Brightness */}
-          <div className="flex items-center gap-0.5">
-            <span className="text-[8px] text-muted-foreground w-7">Brilho</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-muted-foreground w-8">Brilho</span>
             <input
               type="range" min={50} max={150} step={5} value={selectedBrightness}
               onChange={(e) => handleBrightnessChange(selectedClipId, Number(e.target.value))}
-              className="h-1 w-12 accent-primary" title={`${selectedBrightness}%`}
+              className="h-1 w-14 accent-primary" title={`${selectedBrightness}%`}
             />
-            <span className="text-[7px] text-muted-foreground w-7 tabular-nums font-mono">{selectedBrightness}%</span>
+            <span className="text-[9px] text-foreground/70 w-8 tabular-nums font-mono">{selectedBrightness}%</span>
           </div>
         </div>
       )}
@@ -435,7 +497,7 @@ export function Timeline({
           {Array.from({ length: Math.ceil((totalDuration + 30)) }, (_, i) => (
             <div key={i} className="absolute top-0 h-full border-l border-border/30" style={{ left: i * pxPerSec }}>
               {i % 5 === 0 && (
-                <span className="ml-1 text-[8px] text-muted-foreground/50 font-mono">
+                <span className="ml-1 text-[8px] text-muted-foreground/70 font-mono">
                   {Math.floor(i / 60)}:{String(i % 60).padStart(2, "0")}
                 </span>
               )}
@@ -451,19 +513,39 @@ export function Timeline({
                 <div className="absolute left-0 top-0 w-14 z-10 flex flex-col items-center justify-center gap-0.5 bg-background border-r border-border"
                   style={{ height: videoTrackList.length * trackH }}>
                   <Film className="size-3 text-muted-foreground" />
-                  <span className="text-[7px] font-bold text-muted-foreground/60">V{videoTrackList.length > 1 ? "" : ""}</span>
-                  <button type="button" onClick={addVideoTrack} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/40 hover:text-foreground" title="Adicionar track de vídeo">
+                  <span className="text-[8px] font-bold text-muted-foreground/80">V</span>
+                  <button type="button" onClick={addVideoTrack} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/60 hover:text-foreground" title="Adicionar track de vídeo">
                     <Plus className="size-2.5" />
                   </button>
                 </div>
               )}
-              <div className="ml-14 relative h-full">
+              <div
+                className="ml-14 relative h-full"
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes("text/plain")) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "copy";
+                  }
+                }}
+                onDrop={(e) => {
+                  const data = e.dataTransfer.getData("text/plain");
+                  if (!data.startsWith("asset:") || !onDropAsset) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDropHighlight(false);
+                  const assetId = data.slice(6);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const time = Math.max(0, (e.clientX - rect.left) / pxPerSec);
+                  onDropAsset(assetId, time, trackIdx);
+                }}
+              >
                 {vi > 0 && (
-                  <div className="absolute left-0 top-0 text-[6px] text-muted-foreground/30 font-mono px-1">V{trackIdx + 1}</div>
+                  <div className="absolute left-0 top-0 text-[8px] text-muted-foreground/55 font-mono px-1">V{trackIdx + 1}</div>
                 )}
                 {videoClips
                   .filter((c) => (c.trackIndex ?? 0) === trackIdx)
-                  .map((copy) => renderVideoClip(copy, assets, pxPerSec, trackH, selectedClipId, setSelectedClipId, onSelectAsset, handleDragStart, handleDragMove, handleDragEnd, handleTrimStart, handleTrimMove, handleTrimEnd))}
+                  .map((copy) => renderVideoClip(copy, assets, pxPerSec, trackH, selectedClipId, setSelectedClipId, onSelectAsset, handleDragStart, handleDragMove, handleDragEnd, handleTrimStart, handleTrimMove, handleTrimEnd, handleClipContextMenu))}
               </div>
             </div>
           ))}
@@ -474,20 +556,40 @@ export function Timeline({
               {ai === 0 && (
                 <div className="absolute left-0 top-0 w-14 z-10 flex flex-col items-center justify-center gap-0.5 bg-background border-r border-border"
                   style={{ height: audioTrackList.length * trackH }}>
-                  <Music2 className="size-3 text-green-500/60" />
-                  <span className="text-[7px] font-bold text-muted-foreground/60">A</span>
-                  <button type="button" onClick={addAudioTrack} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/40 hover:text-foreground" title="Adicionar track de áudio">
+                  <Music2 className="size-3 text-green-500/70" />
+                  <span className="text-[8px] font-bold text-muted-foreground/80">A</span>
+                  <button type="button" onClick={addAudioTrack} className="mt-0.5 grid size-3.5 place-items-center rounded text-muted-foreground/60 hover:text-foreground" title="Adicionar track de áudio">
                     <Plus className="size-2.5" />
                   </button>
                 </div>
               )}
-              <div className="ml-14 relative h-full">
+              <div
+                className="ml-14 relative h-full"
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes("text/plain")) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "copy";
+                  }
+                }}
+                onDrop={(e) => {
+                  const data = e.dataTransfer.getData("text/plain");
+                  if (!data.startsWith("asset:") || !onDropAsset) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDropHighlight(false);
+                  const assetId = data.slice(6);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const time = Math.max(0, (e.clientX - rect.left) / pxPerSec);
+                  onDropAsset(assetId, time, trackIdx);
+                }}
+              >
                 {ai > 0 && (
-                  <div className="absolute left-0 top-0 text-[6px] text-muted-foreground/30 font-mono px-1">A{trackIdx + 1}</div>
+                  <div className="absolute left-0 top-0 text-[8px] text-muted-foreground/55 font-mono px-1">A{trackIdx + 1}</div>
                 )}
                 {audioClips
                   .filter((c) => (c.trackIndex ?? 0) === trackIdx)
-                  .map((copy) => renderAudioClip(copy, assets, pxPerSec, trackH, selectedClipId, setSelectedClipId, onSelectAsset, handleDragStart, handleDragMove, handleDragEnd, handleTrimStart, handleTrimMove, handleTrimEnd))}
+                  .map((copy) => renderAudioClip(copy, assets, pxPerSec, trackH, selectedClipId, setSelectedClipId, onSelectAsset, handleDragStart, handleDragMove, handleDragEnd, handleTrimStart, handleTrimMove, handleTrimEnd, handleClipContextMenu))}
               </div>
             </div>
           ))}
@@ -495,8 +597,8 @@ export function Timeline({
           {/* Caption track — sempre visível */}
           <div className="relative border-b border-border/15" style={{ height: trackH }}>
             <div className="absolute left-0 top-0 w-14 z-10 flex flex-col items-center justify-center gap-0.5 bg-background border-r border-border" style={{ height: trackH }}>
-              <Captions className="size-3 text-violet-400/70" />
-              <span className="text-[7px] font-bold text-muted-foreground/60">CC</span>
+              <Captions className="size-3 text-violet-400/85" />
+              <span className="text-[8px] font-bold text-muted-foreground/80">CC</span>
             </div>
             <div className="ml-14 relative h-full">
               {captionSegments && captionSegments.length > 0 ? (
@@ -524,7 +626,7 @@ export function Timeline({
                 })
               ) : (
                 <div className="absolute inset-0 flex items-center px-3">
-                  <span className="text-[8px] text-muted-foreground/30 italic">Gere legendas para ver os blocos aqui</span>
+                  <span className="text-[8px] text-muted-foreground/55 italic">Gere legendas para ver os blocos aqui</span>
                 </div>
               )}
             </div>
@@ -541,13 +643,63 @@ export function Timeline({
 
         {visualCopies.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-[11px] text-muted-foreground/60">
+            <p className="text-[11px] text-muted-foreground">
               Arraste um arquivo da biblioteca ou clique duplo para adicionar
             </p>
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[188px] overflow-hidden rounded-lg border border-border bg-card py-1 shadow-xl"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <CtxItem label="Dividir aqui" icon={<SplitSquareHorizontal className="size-3" />} onClick={() => ctxSplitClip(contextMenu.clipId)} />
+          <CtxItem label="Duplicar" icon={<Copy className="size-3" />} onClick={() => ctxDuplicateClip(contextMenu.clipId)} />
+          <div className="my-1 h-px bg-border/60" />
+          <CtxItem label="Copiar" shortcut="Ctrl+C" onClick={() => ctxCopyClip(contextMenu.clipId)} />
+          {clipboardRef.current && (
+            <CtxItem label="Colar" shortcut="Ctrl+V" onClick={ctxPasteClip} />
+          )}
+          <div className="my-1 h-px bg-border/60" />
+          <CtxItem label="Excluir" shortcut="Del" destructive onClick={() => ctxDeleteClip(contextMenu.clipId)} />
+          {contextMenu.assetKind === "video" && onExtractAudioFromClip && (
+            <>
+              <div className="my-1 h-px bg-border/60" />
+              <CtxItem
+                label="Extrair áudio"
+                icon={<Music2 className="size-3" />}
+                onClick={() => {
+                  const clip = visualCopies.find((c) => c.id === contextMenu.clipId);
+                  if (clip) onExtractAudioFromClip(clip.assetId, clip.startTime ?? 0);
+                  setContextMenu(null);
+                }}
+              />
+            </>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+function CtxItem({ label, shortcut, destructive, icon, onClick }: {
+  label: string; shortcut?: string; destructive?: boolean;
+  icon?: React.ReactNode; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] font-medium transition hover:bg-muted ${destructive ? "text-destructive" : "text-foreground"}`}
+      onClick={onClick}
+    >
+      {icon && <span className="text-muted-foreground">{icon}</span>}
+      <span className="flex-1">{label}</span>
+      {shortcut && <span className="ml-2 text-[9px] text-muted-foreground font-mono">{shortcut}</span>}
+    </button>
   );
 }
 
@@ -563,6 +715,7 @@ function renderVideoClip(
   onTrimStart: (e: React.PointerEvent, id: string, side: "left" | "right") => void,
   onTrimMove: (e: React.PointerEvent) => void,
   onTrimEnd: () => void,
+  onCtxMenu: (e: React.MouseEvent, clipId: string, kind: string) => void,
 ) {
   const asset = assets.find((a) => a.id === copy.assetId);
   const duration = getTimelineClipDuration(copy, asset);
@@ -580,6 +733,7 @@ function renderVideoClip(
       }`}
       style={{ left, width, height: h }}
       onClick={(e) => { e.stopPropagation(); setSelectedClipId(copy.id); onSelectAsset(copy.assetId); }}
+      onContextMenu={(e) => onCtxMenu(e, copy.id, asset?.kind ?? "video")}
       onPointerDown={(e) => onDragStart(e, copy.id)}
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
@@ -593,8 +747,9 @@ function renderVideoClip(
         }
       </div>
       {asset?.waveformPeaks && asset.waveformPeaks.length > 0 && (
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-[38%] opacity-55">
-          <path d={buildWavePath(asset.waveformPeaks)} fill="rgba(255,255,255,0.25)" />
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute bottom-0 left-0 w-full h-[45%]">
+          <path d={buildWavePath(asset.waveformPeaks)} fill="rgba(255,255,255,0.60)" />
+          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
         </svg>
       )}
       {vol !== 0 && (
@@ -612,13 +767,13 @@ function renderVideoClip(
       </div>
       {/* Trim handles */}
       <div
-        className="absolute left-0 top-0 h-full w-2 cursor-col-resize bg-white/5 hover:bg-primary/60 transition z-20"
+        className="absolute left-0 top-0 h-full w-2 cursor-col-resize bg-white/20 hover:bg-primary/70 transition z-20"
         onPointerDown={(e) => onTrimStart(e, copy.id, "left")}
         onPointerMove={onTrimMove}
         onPointerUp={onTrimEnd}
       />
       <div
-        className="absolute right-0 top-0 h-full w-2 cursor-col-resize bg-white/5 hover:bg-primary/60 transition z-20"
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize bg-white/20 hover:bg-primary/70 transition z-20"
         onPointerDown={(e) => onTrimStart(e, copy.id, "right")}
         onPointerMove={onTrimMove}
         onPointerUp={onTrimEnd}
@@ -637,6 +792,7 @@ function renderAudioClip(
   onTrimStart: (e: React.PointerEvent, id: string, side: "left" | "right") => void,
   onTrimMove: (e: React.PointerEvent) => void,
   onTrimEnd: () => void,
+  onCtxMenu: (e: React.MouseEvent, clipId: string, kind: string) => void,
 ) {
   const asset = assets.find((a) => a.id === copy.assetId);
   const duration = getTimelineClipDuration(copy, asset);
@@ -654,6 +810,7 @@ function renderAudioClip(
       }`}
       style={{ left, width, height: h }}
       onClick={(e) => { e.stopPropagation(); setSelectedClipId(copy.id); onSelectAsset(copy.assetId); }}
+      onContextMenu={(e) => onCtxMenu(e, copy.id, "audio")}
       onPointerDown={(e) => onDragStart(e, copy.id)}
       onPointerMove={onDragMove}
       onPointerUp={onDragEnd}
@@ -685,13 +842,13 @@ function renderAudioClip(
       </div>
       {/* Trim handles */}
       <div
-        className="absolute left-0 top-0 h-full w-2 cursor-col-resize bg-white/5 hover:bg-green-400/60 transition z-20"
+        className="absolute left-0 top-0 h-full w-2 cursor-col-resize bg-white/20 hover:bg-green-400/70 transition z-20"
         onPointerDown={(e) => onTrimStart(e, copy.id, "left")}
         onPointerMove={onTrimMove}
         onPointerUp={onTrimEnd}
       />
       <div
-        className="absolute right-0 top-0 h-full w-2 cursor-col-resize bg-white/5 hover:bg-green-400/60 transition z-20"
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize bg-white/20 hover:bg-green-400/70 transition z-20"
         onPointerDown={(e) => onTrimStart(e, copy.id, "right")}
         onPointerMove={onTrimMove}
         onPointerUp={onTrimEnd}

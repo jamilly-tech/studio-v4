@@ -54,11 +54,13 @@ export interface MediaIngestResult {
 
 export interface MediaProgressEvent {
   filePath: string;
-  stage: "probe" | "thumbnail" | "waveform" | "waveform-done" | "proxy" | "proxy-done" | "proxy-error" | "convert" | "convert-done" | "strip" | "transcribe" | "stems" | "stems-done" | "remove-watermark" | "done";
+  stage: "probe" | "thumbnail" | "waveform" | "waveform-done" | "proxy" | "proxy-done" | "proxy-error" | "convert" | "convert-done" | "strip" | "transcribe" | "stems" | "stems-done" | "lipsync" | "lipsync-done" | "remove-watermark" | "done";
   percent: number;
   proxyUrl?: string;
   waveformPeaks?: number[];
   error?: string;
+  eta?: number | null;
+  audioDuration?: number;
 }
 
 declare global {
@@ -75,13 +77,26 @@ declare global {
         convertAudio: (filePath: string, opts?: { format?: string }) => Promise<{ url: string; path: string; format: string }>;
         extractWav: (filePath: string) => Promise<{ path?: string; error?: string }>;
         separateStems: (filePath: string) => Promise<{ vocalsPath?: string; vocalsUrl?: string; instrumentalsPath?: string; instrumentalsUrl?: string; error?: string }>;
+        separateStemsFast: (filePath: string) => Promise<{ vocalsPath?: string; vocalsUrl?: string; instrumentalsPath?: string; instrumentalsUrl?: string; error?: string }>;
+        stemsModelStatus: () => Promise<{ ready: boolean; path: string | null }>;
+        downloadStemsModel: () => Promise<{ ready: boolean }>;
+        separateStemsBuiltin: (filePath: string) => Promise<{ vocalsPath?: string; vocalsUrl?: string; instrumentalsPath?: string; instrumentalsUrl?: string; error?: string }>;
+        onModelProgress: (cb: (data: { percent?: number; done?: number; total?: number; ready?: boolean; error?: string; name?: string }) => void) => () => void;
+        whisperStatus: () => Promise<{ exeReady: boolean; tinyReady: boolean; smallReady: boolean }>;
+        transcribeBuiltin: (filePath: string, language?: string, trimStart?: number, trimDuration?: number, model?: string) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
+        onWhisperStatus: (cb: (data: { stage?: string; percent?: number; done?: number; total?: number; ready?: boolean; error?: string }) => void) => () => void;
         thumbnailStrip: (filePath: string, opts?: { count?: number; width?: number; height?: number }) => Promise<{ thumbnails: string[]; duration: number }>;
         transcribe: (filePath: string, language?: string, trimStart?: number, trimDuration?: number) => Promise<{ segments: Array<{ start: number; end: number; text: string }>; language?: string; error?: string }>;
+        detectRepeats: (filePath: string) => Promise<{ groups: Array<Array<{ idx: number; start: number; end: number; duration: number; meanVol: number; maxVol: number }>>; totalDuration: number; takesFound: number; error?: string }>;
         removeWatermark: (filePath: string, region: { x: number; y: number; w: number; h: number }) => Promise<{ outputPath: string; proxyUrl: string }>;
         onProgress: (cb: (data: MediaProgressEvent) => void) => () => void;
         registerProxy: (filePath: string) => Promise<{ url?: string; error?: string }>;
         saveAudio: (srcPath: string, defaultName?: string) => Promise<{ savedPath?: string; canceled?: boolean; error?: string }>;
         detectSilence: (filePath: string, opts?: { noiseDb?: number; minDur?: number; minPause?: number }) => Promise<{ intervals: { start: number; end: number; duration: number }[]; totalDuration: number; error?: string }>;
+        listVoices: () => Promise<{ voices: string[] }>;
+        synthesizeVoice: (text: string, voice?: string) => Promise<{ path?: string; url?: string; error?: string }>;
+        lipsyncStatus: () => Promise<{ ready: boolean }>;
+        lipSync: (videoPath: string, audioPath: string | null, trimStart?: number, trimDuration?: number) => Promise<{ outputPath?: string; url?: string; error?: string }>;
       };
 
       googleAuthConfigured: () => Promise<{ configured: boolean }>;
@@ -98,8 +113,9 @@ declare global {
       showSaveDialog: (opts: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<string | null>;
       saveProjectFile: (payload: { snapshot: unknown; defaultName: string }) => Promise<string | null>;
       openProjectFile: () => Promise<unknown | null>;
+      loadProjectFile: (filePath: string) => Promise<unknown | null>;
 
-      exportVideo: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number; audioOnly?: boolean }[]; outputPath: string; resolution: string; captionsASS?: string }) => Promise<{ outputPath: string }>;
+      exportVideo: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number; audioOnly?: boolean; isOverlay?: boolean; startTime?: number }[]; outputPath: string; resolution: string; captionsASS?: string }) => Promise<{ outputPath: string }>;
       exportAudio: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; format: string }) => Promise<{ outputPath: string }>;
       exportGif: (payload: { clips: { filePath: string | null; trimStart: number; duration: number; speed: number }[]; outputPath: string; resolution: string }) => Promise<{ outputPath: string }>;
       savePortableV4: (payload: { snapshot: unknown; defaultName: string }) => Promise<unknown>;

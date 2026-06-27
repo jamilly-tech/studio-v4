@@ -47,7 +47,7 @@
     --card:               0 0% 14%;      /* painéis, sidebars */
     --card-foreground:    0 0% 95%;      /* texto sobre card */
     --muted:              0 0% 20%;      /* áreas rebaixadas */
-    --muted-foreground:   0 0% 60%;      /* texto secundário  ~5.5:1 sobre card */
+    --muted-foreground:   0 0% 72%;      /* texto secundário — legível sobre card escuro */
     --secondary:          0 0% 17%;      /* hover sutil */
     --border:             0 0% 26%;      /* bordas visíveis */
 
